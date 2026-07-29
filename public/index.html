@@ -9,9 +9,7 @@
 <body>
   <header>
     <div class="header-inner">
-      <h1>
-        <span class="logo">🗺️</span> WME Requests
-      </h1>
+      <h1><span class="logo">🗺️</span> WME Requests</h1>
       <nav>
         <button class="nav-btn active" data-view="dashboard">Dashboard</button>
         <button class="nav-btn" data-view="admin">Admin</button>
@@ -19,27 +17,22 @@
     </div>
   </header>
 
-  <!-- ── Dashboard View ────────────────────────────────────────────── -->
+  <!-- ── Dashboard ───────────────────────────────────────────────────── -->
   <main id="view-dashboard">
     <section class="filters card">
       <h2>Filters</h2>
       <div class="filter-row">
-        <label>
-          Country
-          <select id="filter-country">
-            <option value="">All countries</option>
-          </select>
+        <label>Country
+          <select id="filter-country"><option value="">All countries</option></select>
         </label>
-        <label>
-          Type
+        <label>Type
           <select id="filter-type">
             <option value="">All types</option>
             <option value="downlock">🔒 Downlock</option>
             <option value="imagery">🖼️ Imagery</option>
           </select>
         </label>
-        <label>
-          Status
+        <label>Status
           <select id="filter-status">
             <option value="">All statuses</option>
             <option value="pending">Pending</option>
@@ -53,10 +46,10 @@
     </section>
 
     <section class="stats-row">
-      <div class="stat-card" id="stat-total"><span class="stat-num">—</span><span class="stat-label">Total</span></div>
-      <div class="stat-card" id="stat-pending"><span class="stat-num">—</span><span class="stat-label">Pending</span></div>
-      <div class="stat-card" id="stat-in-progress"><span class="stat-num">—</span><span class="stat-label">In Progress</span></div>
-      <div class="stat-card" id="stat-completed"><span class="stat-num">—</span><span class="stat-label">Completed</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-total">—</span><span class="stat-label">Total</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-pending">—</span><span class="stat-label">Pending</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-progress">—</span><span class="stat-label">In Progress</span></div>
+      <div class="stat-card"><span class="stat-num" id="stat-completed">—</span><span class="stat-label">Completed</span></div>
     </section>
 
     <section class="card">
@@ -89,19 +82,19 @@
     </section>
   </main>
 
-  <!-- ── Admin View ─────────────────────────────────────────────────── -->
+  <!-- ── Admin ────────────────────────────────────────────────────────── -->
   <main id="view-admin" class="hidden">
     <div class="admin-grid">
-      <!-- Countries panel -->
       <section class="card">
         <div class="section-header">
           <h2>Countries</h2>
           <button class="btn btn-primary" id="btn-add-country">+ Add</button>
         </div>
-        <ul id="country-list" class="item-list"></ul>
+        <ul id="country-list" class="item-list">
+          <li class="loading-li">Loading…</li>
+        </ul>
       </section>
 
-      <!-- Channels panel -->
       <section class="card">
         <div class="section-header">
           <h2>Notification Channels</h2>
@@ -109,18 +102,18 @@
         </div>
         <div class="channel-country-filter">
           <label>Country
-            <select id="channel-country-select">
-              <option value="">Select a country</option>
-            </select>
+            <select id="channel-country-select"><option value="">Select a country…</option></select>
           </label>
         </div>
-        <ul id="channel-list" class="item-list"></ul>
+        <ul id="channel-list" class="item-list">
+          <li class="loading-li">Select a country to see channels</li>
+        </ul>
       </section>
     </div>
   </main>
 
-  <!-- ── Modals ─────────────────────────────────────────────────────── -->
-  <div id="modal-overlay" class="hidden">
+  <!-- ── Modal ────────────────────────────────────────────────────────── -->
+  <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true">
     <div id="modal" class="modal">
       <button id="modal-close" class="modal-close" aria-label="Close">✕</button>
       <div id="modal-content"></div>
