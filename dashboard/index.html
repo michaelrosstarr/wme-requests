@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WME Requests Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>
+        <span class="logo">🗺️</span> WME Requests
+      </h1>
+      <nav>
+        <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+        <button class="nav-btn" data-view="admin">Admin</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ── Dashboard View ────────────────────────────────────────────── -->
+  <main id="view-dashboard">
+    <section class="filters card">
+      <h2>Filters</h2>
+      <div class="filter-row">
+        <label>
+          Country
+          <select id="filter-country">
+            <option value="">All countries</option>
+          </select>
+        </label>
+        <label>
+          Type
+          <select id="filter-type">
+            <option value="">All types</option>
+            <option value="downlock">🔒 Downlock</option>
+            <option value="imagery">🖼️ Imagery</option>
+          </select>
+        </label>
+        <label>
+          Status
+          <select id="filter-status">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+        <button id="btn-apply-filters" class="btn btn-primary">Apply</button>
+      </div>
+    </section>
+
+    <section class="stats-row">
+      <div class="stat-card" id="stat-total"><span class="stat-num">—</span><span class="stat-label">Total</span></div>
+      <div class="stat-card" id="stat-pending"><span class="stat-num">—</span><span class="stat-label">Pending</span></div>
+      <div class="stat-card" id="stat-in-progress"><span class="stat-num">—</span><span class="stat-label">In Progress</span></div>
+      <div class="stat-card" id="stat-completed"><span class="stat-num">—</span><span class="stat-label">Completed</span></div>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <h2>Requests</h2>
+        <span id="request-count" class="badge"></span>
+      </div>
+      <div id="requests-table-wrap">
+        <table id="requests-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Country</th>
+              <th>Type</th>
+              <th>Lock Level</th>
+              <th>Permalink</th>
+              <th>Submitted By</th>
+              <th>Notes</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="requests-body">
+            <tr><td colspan="10" class="loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </section>
+  </main>
+
+  <!-- ── Admin View ─────────────────────────────────────────────────── -->
+  <main id="view-admin" class="hidden">
+    <div class="admin-grid">
+      <!-- Countries panel -->
+      <section class="card">
+        <div class="section-header">
+          <h2>Countries</h2>
+          <button class="btn btn-primary" id="btn-add-country">+ Add</button>
+        </div>
+        <ul id="country-list" class="item-list"></ul>
+      </section>
+
+      <!-- Channels panel -->
+      <section class="card">
+        <div class="section-header">
+          <h2>Notification Channels</h2>
+          <button class="btn btn-primary" id="btn-add-channel">+ Add</button>
+        </div>
+        <div class="channel-country-filter">
+          <label>Country
+            <select id="channel-country-select">
+              <option value="">Select a country</option>
+            </select>
+          </label>
+        </div>
+        <ul id="channel-list" class="item-list"></ul>
+      </section>
+    </div>
+  </main>
+
+  <!-- ── Modals ─────────────────────────────────────────────────────── -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal" class="modal">
+      <button id="modal-close" class="modal-close" aria-label="Close">✕</button>
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
