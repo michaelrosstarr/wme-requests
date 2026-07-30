@@ -1,0 +1,38 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "wme-requests",
+	"compatibility_date": "2025-09-02",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"main": "@tanstack/react-start/server-entry",
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"vars": {
+		// Origins allowed to call the API cross-origin (comma-separated, or * for all).
+		// Restricted to Waze's own domains since the userscript is the only cross-origin
+		// caller of the public POST /api/requests endpoint — everything else (the dashboard)
+		// is same-origin and unaffected by this. Includes both waze.com and www.waze.com
+		// since Waze's own generated links use the bare domain while the app may serve under www.
+		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com",
+		// The "From" address for email notifications sent via Postmark — must be a verified
+		// Sender Signature (or a domain you've verified) in your Postmark account.
+		// The Postmark Server API Token itself is a secret, not a var — see DEPLOYMENT.md.
+		"POSTMARK_FROM_EMAIL": "notifications@mail.wazetools.com"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "wme-requests",
+			// Replace with the ID printed by: wrangler d1 create wme-requests
+			"database_id": "2af446ca-93ff-4681-ab5c-80edcd5098d0",
+			"remote": true
+		}
+	]
+}

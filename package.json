@@ -1,16 +1,51 @@
 {
   "name": "wme-requests",
   "version": "1.0.0",
-  "description": "WME Requests — Cloudflare Pages + D1 backend with Tampermonkey userscript",
+  "description": "WME Requests — TanStack Start + Mantine UI on Cloudflare Workers, with D1 backend and a Tampermonkey userscript",
   "private": true,
+  "type": "module",
+  "imports": {
+    "#/*": "./src/*"
+  },
   "scripts": {
-    "dev": "wrangler pages dev public --d1=DB",
-    "deploy": "wrangler pages deploy public",
+    "dev": "vite dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "vite build",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types",
     "db:create": "wrangler d1 create wme-requests",
     "db:migrate:local": "wrangler d1 migrations apply wme-requests --local",
     "db:migrate:remote": "wrangler d1 migrations apply wme-requests --remote"
   },
+  "dependencies": {
+    "@mantine/core": "^9.5.0",
+    "@mantine/form": "^9.5.0",
+    "@mantine/hooks": "^9.5.0",
+    "@mantine/notifications": "^9.5.0",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-router": "^1.170.18",
+    "@tanstack/react-start": "^1.168.33",
+    "better-auth": "^1.6.25",
+    "better-auth-cloudflare": "^0.3.1",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
   "devDependencies": {
-    "wrangler": "^3.40.0"
+    "@better-auth/cli": "^1.4.21",
+    "@cloudflare/vite-plugin": "^1.48.0",
+    "@tanstack/router-cli": "^1.132.0",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "postcss": "^8.5.0",
+    "postcss-preset-mantine": "^1.18.0",
+    "postcss-simple-vars": "^7.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "wrangler": "^4.115.0"
   }
 }

@@ -2,3 +2,12 @@ node_modules/
 .wrangler/
 .dev.vars
 package-lock.json
+dist
+dist-ssr
+*.local
+.env
+.nitro
+.tanstack
+.output
+.vinxi
+__unconfig*
