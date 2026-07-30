@@ -1,0 +1,16 @@
+{
+  "name": "wme-requests",
+  "version": "1.0.0",
+  "description": "WME Requests — Cloudflare Pages + D1 backend with Tampermonkey userscript",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public --d1=DB",
+    "deploy": "wrangler pages deploy public",
+    "db:create": "wrangler d1 create wme-requests",
+    "db:migrate:local": "wrangler d1 migrations apply wme-requests --local",
+    "db:migrate:remote": "wrangler d1 migrations apply wme-requests --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^3.40.0"
+  }
+}
