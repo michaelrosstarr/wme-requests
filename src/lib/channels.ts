@@ -7,7 +7,7 @@ import type { GoogleServiceAccount } from './google-sheets'
 
 // google_credentials_encrypted never leaves the server — API consumers only ever see
 // whether a channel has credentials configured, via has_google_credentials.
-function sanitizeChannel(channel: NotificationChannel) {
+function sanitizeChannel(channel: NotificationChannel & { region_name?: string | null; region_code?: string | null }) {
   const { google_credentials_encrypted, ...rest } = channel
   return { ...rest, has_google_credentials: !!google_credentials_encrypted }
 }
@@ -16,8 +16,10 @@ export async function getChannels(access: UserAccess, countryId: number) {
   const country = await dbFirst('SELECT id FROM countries WHERE id = ?', [countryId])
   if (!country) return err('Country not found', 404)
   if (!canAccessCountry(access, countryId)) return err('Country not found', 404)
-  const rows = await dbAll<NotificationChannel>(
-    'SELECT * FROM notification_channels WHERE country_id = ? ORDER BY event_type, platform',
+  const rows = await dbAll<NotificationChannel & { region_name: string | null; region_code: string | null }>(
+    `SELECT ch.*, g.name AS region_name, g.code AS region_code
+     FROM notification_channels ch LEFT JOIN regions g ON g.id = ch.region_id
+     WHERE ch.country_id = ? ORDER BY ch.event_type, ch.platform`,
     [countryId],
   )
   return json(rows.map(sanitizeChannel))
@@ -27,6 +29,9 @@ interface ChannelBody {
   label?: string
   platform?: Platform
   event_type?: EventType
+  // Optional — scopes the channel to one region within the country instead of the whole
+  // country. null/omitted means country-wide, the pre-existing behaviour.
+  region_id?: number | string | null
   webhook_url?: string | null
   bot_token?: string | null
   chat_id?: string | null
@@ -39,6 +44,16 @@ interface ChannelBody {
   // this (undefined) keeps the channel's existing encrypted credentials; the client never
   // gets the plaintext back to resubmit unchanged, so "leave blank to keep" is the only option.
   google_service_account_json?: string | null
+}
+
+// Resolves+validates an optional region_id against the channel's country. Returns the
+// normalized region id (or null), or an error message.
+async function resolveRegionId(countryId: number, regionId: ChannelBody['region_id']): Promise<{ id: number | null } | { error: string }> {
+  if (regionId == null || regionId === '') return { id: null }
+  if (!Number.isInteger(Number(regionId))) return { error: 'region_id must be an integer' }
+  const region = await dbFirst('SELECT id FROM regions WHERE id = ? AND country_id = ?', [Number(regionId), countryId])
+  if (!region) return { error: 'Region not found for this country' }
+  return { id: Number(regionId) }
 }
 
 // Returns an error message if the platform-specific required fields are missing/invalid, else null.
@@ -84,6 +99,7 @@ export async function createChannel(access: UserAccess, countryId: number, body:
     label,
     platform,
     event_type,
+    region_id,
     webhook_url,
     bot_token,
     chat_id,
@@ -99,6 +115,9 @@ export async function createChannel(access: UserAccess, countryId: number, body:
   if (!event_type || !EVENT_TYPES.includes(event_type))
     return err(`event_type must be one of: ${EVENT_TYPES.join(', ')}`)
 
+  const resolvedRegion = await resolveRegionId(countryId, region_id)
+  if ('error' in resolvedRegion) return err(resolvedRegion.error)
+
   const platformError = validatePlatformFields(platform, { webhook_url, bot_token, chat_id, email_to, spreadsheet_id })
   if (platformError) return err(platformError)
 
@@ -112,10 +131,11 @@ export async function createChannel(access: UserAccess, countryId: number, body:
 
   const result = await dbRun(
     `INSERT INTO notification_channels
-       (country_id, label, platform, event_type, webhook_url, bot_token, chat_id, custom_prefix, email_to, discord_forum, spreadsheet_id, sheet_name, google_credentials_encrypted)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (country_id, region_id, label, platform, event_type, webhook_url, bot_token, chat_id, custom_prefix, email_to, discord_forum, spreadsheet_id, sheet_name, google_credentials_encrypted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       countryId,
+      resolvedRegion.id,
       label.trim(),
       platform,
       event_type,
@@ -144,6 +164,14 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
   const label = body.label?.trim() || existing.label
   const platform = body.platform && PLATFORMS.includes(body.platform) ? body.platform : existing.platform
   const event_type = body.event_type && EVENT_TYPES.includes(body.event_type) ? body.event_type : existing.event_type
+
+  let region_id = existing.region_id
+  if (body.region_id !== undefined) {
+    const resolvedRegion = await resolveRegionId(existing.country_id, body.region_id)
+    if ('error' in resolvedRegion) return err(resolvedRegion.error)
+    region_id = resolvedRegion.id
+  }
+
   const webhook_url = body.webhook_url !== undefined ? body.webhook_url : existing.webhook_url
   const bot_token = body.bot_token !== undefined ? body.bot_token : existing.bot_token
   const chat_id = body.chat_id !== undefined ? body.chat_id : existing.chat_id
@@ -167,13 +195,14 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
 
   await dbRun(
     `UPDATE notification_channels
-     SET label=?, platform=?, event_type=?, webhook_url=?, bot_token=?, chat_id=?, custom_prefix=?, email_to=?,
+     SET label=?, platform=?, event_type=?, region_id=?, webhook_url=?, bot_token=?, chat_id=?, custom_prefix=?, email_to=?,
          discord_forum=?, spreadsheet_id=?, sheet_name=?, google_credentials_encrypted=?
      WHERE id=?`,
     [
       label,
       platform,
       event_type,
+      region_id,
       webhook_url,
       bot_token,
       chat_id,
@@ -207,7 +236,13 @@ export async function testChannel(access: UserAccess, id: number) {
     channel.country_id,
   ])
   if (!country) return err('Country not found', 404)
-  const result = await sendTestMessage(channel, country.name, country.code)
+
+  let region: { name: string; code: string } | null = null
+  if (channel.region_id != null) {
+    region = await dbFirst('SELECT name, code FROM regions WHERE id = ?', [channel.region_id])
+  }
+
+  const result = await sendTestMessage(channel, country.name, country.code, region?.name ?? null, region?.code ?? null)
   if (!result.ok) return err(result.error || 'Failed to send test notification', 502)
   return json({ ok: true })
 }

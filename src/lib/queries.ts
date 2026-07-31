@@ -1,11 +1,42 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import apiFetch from './api-client'
-import type { AdminUser, Channel, Country, Me, RequestsResponse, Status, UserReportResponse } from './types'
+import type { AdminUser, Channel, Country, Me, Region, RequestsResponse, Status, UserReportResponse } from './types'
 
 export function useCountries() {
   return useQuery({
     queryKey: ['countries'],
     queryFn: () => apiFetch<Country[]>('/countries'),
+  })
+}
+
+export function useRegions(countryId: string | null) {
+  return useQuery({
+    queryKey: ['regions', countryId],
+    queryFn: () => apiFetch<Region[]>(`/countries/${countryId}/regions`),
+    enabled: !!countryId,
+  })
+}
+
+export function useCreateRegion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { countryId: string; name: string; code: string }) =>
+      apiFetch(`/countries/${vars.countryId}/regions`, {
+        method: 'POST',
+        body: JSON.stringify({ name: vars.name, code: vars.code }),
+      }),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['regions', vars.countryId] }),
+  })
+}
+
+export function useDeleteRegion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: number; countryId: string }) => apiFetch(`/regions/${vars.id}`, { method: 'DELETE' }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['regions', vars.countryId] })
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
   })
 }
 
@@ -18,6 +49,7 @@ export function useUserReport() {
 
 export interface RequestsFilter {
   countryId: string | null
+  regionId: string | null
   type: string | null
   status: string | null
   limit: number
@@ -27,6 +59,7 @@ export interface RequestsFilter {
 export function useRequests(filter: RequestsFilter) {
   const search = new URLSearchParams({ limit: String(filter.limit), offset: String(filter.offset) })
   if (filter.countryId) search.set('country_id', filter.countryId)
+  if (filter.regionId) search.set('region_id', filter.regionId)
   if (filter.type) search.set('type', filter.type)
   if (filter.status) search.set('status', filter.status)
 
@@ -117,6 +150,8 @@ export interface ChannelFormValues {
   label: string
   platform: Channel['platform']
   event_type: Channel['event_type']
+  // Optional — scopes the channel to one region within the country. null means country-wide.
+  region_id: number | null
   webhook_url: string | null
   bot_token: string | null
   chat_id: string | null

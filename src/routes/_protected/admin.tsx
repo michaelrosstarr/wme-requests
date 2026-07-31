@@ -2,13 +2,14 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Alert, Badge, Button, Card, Container, Group, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { Globe, Info, KeyRound, Mail, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
+import { Globe, Info, KeyRound, Mail, MapPin, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
 import {
   useChannels,
   useCountries,
   useDeleteChannel,
   useDeleteCountry,
   useMe,
+  useRegions,
   useResetUserPassword,
   useTestChannel,
   useUsers,
@@ -17,6 +18,7 @@ import { EventTypeBadge, PlatformBadge } from '@/lib/labels'
 import type { AdminUser, Channel, Country } from '@/lib/types'
 import CountryFormModal from '@/components/CountryFormModal'
 import ChannelFormModal from '@/components/ChannelFormModal'
+import RegionsModal from '@/components/RegionsModal'
 import UserFormModal from '@/components/UserFormModal'
 import InviteUserModal from '@/components/InviteUserModal'
 import UserAccessModal from '@/components/UserAccessModal'
@@ -33,16 +35,31 @@ function Admin() {
     opened: false,
     country: null,
   })
+  const [regionsModal, setRegionsModal] = useState<{ opened: boolean; country: Country | null }>({
+    opened: false,
+    country: null,
+  })
   const [selectedCountryId, setSelectedCountryId] = useState<string | null>(null)
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
   const [channelModal, setChannelModal] = useState<{ opened: boolean; channel: Channel | null }>({
     opened: false,
     channel: null,
   })
 
+  const regionsForSelectedCountryQuery = useRegions(selectedCountryId)
+  const regionsForSelectedCountry = regionsForSelectedCountryQuery.data ?? []
   const channelsQuery = useChannels(selectedCountryId)
+  const channels = (channelsQuery.data ?? []).filter((ch) =>
+    selectedRegionId ? String(ch.region_id) === selectedRegionId : true,
+  )
   const deleteCountry = useDeleteCountry()
   const deleteChannel = useDeleteChannel()
   const testChannel = useTestChannel()
+
+  function handleSelectCountry(value: string | null) {
+    setSelectedCountryId(value)
+    setSelectedRegionId(null)
+  }
 
   const usersQuery = useUsers()
   const users = usersQuery.data ?? []
@@ -128,6 +145,14 @@ function Admin() {
                     <Button
                       size="xs"
                       variant="light"
+                      leftSection={<MapPin size={14} />}
+                      onClick={() => setRegionsModal({ opened: true, country: c })}
+                    >
+                      Regions
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
                       leftSection={<Pencil size={14} />}
                       onClick={() => setCountryModal({ opened: true, country: c })}
                     >
@@ -182,6 +207,18 @@ function Admin() {
                 </Table.Tr>
                 <Table.Tr>
                   <Table.Td>
+                    <code>{'{region_code}'}</code>
+                  </Table.Td>
+                  <Table.Td>Channel's region code, e.g. CA (empty if country-wide)</Table.Td>
+                </Table.Tr>
+                <Table.Tr>
+                  <Table.Td>
+                    <code>{'{region_name}'}</code>
+                  </Table.Td>
+                  <Table.Td>Channel's region name, e.g. California (empty if country-wide)</Table.Td>
+                </Table.Tr>
+                <Table.Tr>
+                  <Table.Td>
                     <code>{'{editor_rank}'}</code>
                   </Table.Td>
                   <Table.Td>Submitter's WME editor rank</Table.Td>
@@ -205,22 +242,32 @@ function Admin() {
               <code>L5ZA</code> for a lock-5 South Africa request.
             </Text>
           </Alert>
-          <Select
-            label="Country"
-            placeholder="Select a country…"
-            data={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` }))}
-            value={selectedCountryId}
-            onChange={setSelectedCountryId}
-            mb="sm"
-            clearable
-          />
+          <Group grow mb="sm" align="flex-end">
+            <Select
+              label="Country"
+              placeholder="Select a country…"
+              data={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` }))}
+              value={selectedCountryId}
+              onChange={handleSelectCountry}
+              clearable
+            />
+            <Select
+              label="Region"
+              placeholder={selectedCountryId ? 'All (country-wide + regions)' : 'Select a country first'}
+              data={regionsForSelectedCountry.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+              value={selectedRegionId}
+              onChange={setSelectedRegionId}
+              disabled={!selectedCountryId}
+              clearable
+            />
+          </Group>
           <Stack gap="xs">
             {!selectedCountryId && <Text c="dimmed">Select a country to see channels</Text>}
             {selectedCountryId && channelsQuery.isLoading && <Text c="dimmed">Loading…</Text>}
-            {selectedCountryId && channelsQuery.data && !channelsQuery.data.length && (
-              <Text c="dimmed">No channels configured for this country.</Text>
+            {selectedCountryId && channelsQuery.data && !channels.length && (
+              <Text c="dimmed">No channels configured for this scope.</Text>
             )}
-            {channelsQuery.data?.map((ch) => (
+            {channels.map((ch) => (
               <Card key={ch.id} withBorder radius="sm" p="xs">
                 <Group justify="space-between">
                   <div>
@@ -228,6 +275,15 @@ function Admin() {
                     <Group gap={4} mt={4}>
                       <PlatformBadge platform={ch.platform} />
                       <EventTypeBadge eventType={ch.event_type} />
+                      {ch.region_id ? (
+                        <Badge size="xs" color="grape" variant="light" leftSection={<MapPin size={10} />}>
+                          {ch.region_name ?? `#${ch.region_id}`}
+                        </Badge>
+                      ) : (
+                        <Badge size="xs" color="blue" variant="light" leftSection={<Globe size={10} />}>
+                          Country-wide
+                        </Badge>
+                      )}
                     </Group>
                   </div>
                   <Group gap="xs">
@@ -338,6 +394,11 @@ function Admin() {
         opened={countryModal.opened}
         country={countryModal.country}
         onClose={() => setCountryModal({ opened: false, country: null })}
+      />
+      <RegionsModal
+        opened={regionsModal.opened}
+        country={regionsModal.country}
+        onClose={() => setRegionsModal({ opened: false, country: null })}
       />
       {selectedCountryId && (
         <ChannelFormModal

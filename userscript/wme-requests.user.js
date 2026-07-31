@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.1.0
+// @version      2.2.0
 // @description  Send downlock and imagery requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
@@ -32,6 +32,9 @@
   // ── State ───────────────────────────────────────────────────────────────────
   let apiBase = GM_getValue('apiBase', DEFAULT_API_BASE);
   let countries = [];
+  // Regions (states/provinces) of whichever country is currently selected — refetched
+  // whenever that changes. Optional: a country with none configured just has an empty list.
+  let regions = [];
 
   // WME SDK handle + resolved methods (some method names aren't confirmed by the
   // public docs, so we probe a few candidates and log what's actually available
@@ -40,6 +43,7 @@
   let getSelectionFn = null;
   let getSegmentByIdFn = null;
   let getTopCountryFn = null;
+  let getTopStateFn = null;
 
   // ── Bootstrap ───────────────────────────────────────────────────────────────
   function bootstrap() {
@@ -86,6 +90,9 @@
     );
     getSegmentByIdFn = sdkMethodOf(sdk.DataModel?.Segments, ['getById'], 'DataModel.Segments.getById');
     getTopCountryFn = sdkMethodOf(sdk.DataModel?.Countries, ['getTopCountry'], 'DataModel.Countries.getTopCountry');
+    // Not confirmed by the public SDK docs at all — probed the same way as getTopCountry.
+    // If none of these exist, region auto-detect silently falls back to manual selection.
+    getTopStateFn = sdkMethodOf(sdk.DataModel?.States, ['getTopState', 'getTopStateId'], 'DataModel.States.getTopState');
   }
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -335,6 +342,11 @@
             <option value="">Loading…</option>
           </select>
 
+          <label>Region <span style="font-weight:400;color:#888">(optional)</span></label>
+          <select id="wmereq-region">
+            <option value="">Country-wide</option>
+          </select>
+
           <label>Request Type</label>
           <select id="wmereq-type">
             <option value="downlock">Downlock</option>
@@ -366,6 +378,7 @@
 
   function bindPanelEvents() {
     on('wmereq-type', 'change', syncLockRow);
+    on('wmereq-country', 'change', (e) => fetchRegions(e.target.value));
     on('wmereq-btn-submit-downlock', 'click', () => submitRequest('downlock'));
     on('wmereq-btn-submit-imagery', 'click', () => submitRequest('imagery'));
     on('wmereq-btn-settings', 'click', openSettings);
@@ -554,7 +567,45 @@
     const countrySel = byId('wmereq-country');
     if (!countrySel) return;
     const resolved = resolveCurrentCountryId();
-    if (resolved) countrySel.value = String(resolved);
+    if (resolved) {
+      countrySel.value = String(resolved);
+      fetchRegions(String(resolved));
+    }
+  }
+
+  // Matches the state/province the Wazer is currently viewing/editing to a configured
+  // region in the current country's list, by code or name — same approach as
+  // resolveCurrentCountryId, but for the (unconfirmed) DataModel.States API.
+  function resolveCurrentRegionId() {
+    if (!regions.length) { log('resolveCurrentRegionId: no regions loaded for the current country.'); return null; }
+    if (!getTopStateFn) { log('resolveCurrentRegionId: no DataModel.States.getTopState method resolved.'); return null; }
+    try {
+      const topState = getTopStateFn();
+      if (!topState) {
+        log('resolveCurrentRegionId: getTopState() returned nothing.');
+        return null;
+      }
+      log(`resolveCurrentRegionId: top state object = ${JSON.stringify(topState)}`);
+      const name = String(pick(topState, ['name']) || '').toLowerCase();
+      const abbr = String(pick(topState, ['abbr', 'code', 'isoCode']) || '').toLowerCase();
+      const match = regions.find((r) =>
+        (abbr && String(r.code || '').toLowerCase() === abbr) || String(r.name || '').toLowerCase() === name
+      );
+      if (!match) {
+        log(`resolveCurrentRegionId: no configured region matched name="${name}" abbr="${abbr}". Configured: ${regions.map((r) => `${r.name}/${r.code}`).join(', ')}`);
+      }
+      return match ? match.id : null;
+    } catch (e) {
+      log('resolveCurrentRegionId: getTopState threw: ' + e.message);
+      return null;
+    }
+  }
+
+  function applyAutoRegion() {
+    const regionSel = byId('wmereq-region');
+    if (!regionSel) return;
+    const resolved = resolveCurrentRegionId();
+    regionSel.value = resolved ? String(resolved) : '';
   }
 
   function describeObject(obj) {
@@ -705,6 +756,7 @@
   // ── Submit ────────────────────────────────────────────────────────────────────
   async function submitRequest(type) {
     const countryId = (byId('wmereq-country') || {}).value;
+    const regionId = (byId('wmereq-region') || {}).value;
     const lockLevel = (byId('wmereq-lock') || {}).value;
     let notes = (byId('wmereq-notes') || {}).value.trim();
 
@@ -717,17 +769,18 @@
       if (reason) notes = notes ? `Reason: ${reason}\n${notes}` : `Reason: ${reason}`;
     }
 
-    await doSubmit(type, { countryId, lockLevel, notes, status: showStatus });
+    await doSubmit(type, { countryId, regionId, lockLevel, notes, status: showStatus });
   }
 
   // Quick submit from the floating action buttons, using the currently selected
-  // segment's inferred country and lock level (no need to open the panel).
+  // segment's inferred country/region and lock level (no need to open the panel).
   async function quickSubmit(type) {
     const selectedSegs = getSelectedSegments();
     if (!selectedSegs.length) { showFabStatus('Select a segment first.', 'error'); return; }
 
     const seg = selectedSegs[0];
     const countryId = resolveCurrentCountryId();
+    const regionId = resolveCurrentRegionId();
     const lockRankRaw = pick(seg, ['lockRank', 'lockLevel']);
     const lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
 
@@ -741,10 +794,10 @@
       notes = reason ? `Reason: ${reason}` : null;
     }
 
-    await doSubmit(type, { countryId, lockLevel, notes, status: showFabStatus });
+    await doSubmit(type, { countryId, regionId, lockLevel, notes, status: showFabStatus });
   }
 
-  async function doSubmit(type, { countryId, lockLevel, notes, status }) {
+  async function doSubmit(type, { countryId, regionId, lockLevel, notes, status }) {
     const selectedSegs = getSelectedSegments();
     if (!selectedSegs.length) { status('Please select a segment first.', 'error'); return; }
 
@@ -759,6 +812,7 @@
 
     const body = {
       country_id: parseInt(countryId),
+      region_id: regionId ? parseInt(regionId) : null,
       type,
       permalink,
       notes: notes || null,
@@ -797,7 +851,7 @@
     }
   }
 
-  // ── Countries ─────────────────────────────────────────────────────────────────
+  // ── Countries / Regions ──────────────────────────────────────────────────────
   async function fetchCountries() {
     try {
       countries = await apiGet('/countries');
@@ -811,6 +865,28 @@
       const sel = byId('wmereq-country');
       if (sel) sel.innerHTML = '<option value="">Error loading countries</option>';
       log('Failed to load countries: ' + e.message);
+    }
+  }
+
+  // Refetches the region list for the given country and repopulates the region select.
+  // Called whenever the country changes, whether by auto-detect or manual selection.
+  async function fetchRegions(countryId) {
+    const sel = byId('wmereq-region');
+    regions = [];
+    if (!countryId) {
+      if (sel) sel.innerHTML = '<option value="">Country-wide</option>';
+      return;
+    }
+    try {
+      regions = await apiGet(`/countries/${countryId}/regions`);
+      if (sel) {
+        sel.innerHTML =
+          '<option value="">Country-wide</option>' +
+          regions.map((r) => `<option value="${r.id}">${escHtml(r.name)} (${escHtml(r.code)})</option>`).join('');
+      }
+      applyAutoRegion();
+    } catch (e) {
+      log('Failed to load regions: ' + e.message);
     }
   }
 

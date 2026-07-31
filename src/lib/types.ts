@@ -10,9 +10,23 @@ export interface Country {
   created_at: string
 }
 
+export interface Region {
+  id: number
+  country_id: number
+  name: string
+  code: string
+  created_at: string
+}
+
 export interface Channel {
   id: number
   country_id: number
+  // null means the channel is country-wide; set means it only fires for that region's
+  // requests (falling back to country-wide channels when a region has none — see
+  // fireNotifications in src/lib/notifications.ts).
+  region_id: number | null
+  region_name?: string | null
+  region_code?: string | null
   label: string
   platform: Platform
   event_type: EventType
@@ -30,6 +44,7 @@ export interface Channel {
 export interface RequestItem {
   id: number
   country_id: number
+  region_id: number | null
   type: RequestType
   permalink: string
   lock_level: number | null
@@ -41,6 +56,8 @@ export interface RequestItem {
   updated_at: string
   country_name: string
   country_code: string
+  region_name: string | null
+  region_code: string | null
   screenshot_key: string | null
 }
 

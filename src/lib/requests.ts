@@ -8,21 +8,34 @@ interface RequestWithCountry extends RequestRow {
   status: Status
   country_name: string
   country_code: string
+  region_name: string | null
+  region_code: string | null
   created_at: string
   updated_at: string
 }
+
+const REQUEST_SELECT = `SELECT r.*, c.name AS country_name, c.code AS country_code,
+                                g.name AS region_name, g.code AS region_code
+                         FROM requests r
+                         JOIN countries c ON c.id = r.country_id
+                         LEFT JOIN regions g ON g.id = r.region_id`
 
 export async function getRequests(access: UserAccess, searchParams: URLSearchParams) {
   const conditions: string[] = []
   const params: unknown[] = []
 
   const countryId = searchParams.get('country_id')
+  const regionId = searchParams.get('region_id')
   const type = searchParams.get('type')
   const status = searchParams.get('status')
 
   if (countryId) {
     conditions.push('r.country_id = ?')
     params.push(parseInt(countryId))
+  }
+  if (regionId) {
+    conditions.push('r.region_id = ?')
+    params.push(parseInt(regionId))
   }
   if (type && REQUEST_TYPES.includes(type as RequestType)) {
     conditions.push('r.type = ?')
@@ -43,9 +56,7 @@ export async function getRequests(access: UserAccess, searchParams: URLSearchPar
   const offset = Math.max(parseInt(searchParams.get('offset') || '') || 0, 0)
 
   const rows = await dbAll<RequestWithCountry>(
-    `SELECT r.*, c.name AS country_name, c.code AS country_code
-     FROM requests r JOIN countries c ON c.id = r.country_id
-     ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
+    `${REQUEST_SELECT} ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   )
   const totalRow = await dbFirst<{ count: number }>(`SELECT COUNT(*) AS count FROM requests r ${where}`, params)
@@ -53,11 +64,7 @@ export async function getRequests(access: UserAccess, searchParams: URLSearchPar
 }
 
 export async function getRequest(access: UserAccess, id: number) {
-  const row = await dbFirst<RequestWithCountry>(
-    `SELECT r.*, c.name AS country_name, c.code AS country_code
-     FROM requests r JOIN countries c ON c.id = r.country_id WHERE r.id = ?`,
-    [id],
-  )
+  const row = await dbFirst<RequestWithCountry>(`${REQUEST_SELECT} WHERE r.id = ?`, [id])
   if (!row) return err('Request not found', 404)
   if (!canAccessCountry(access, row.country_id)) return err('Request not found', 404)
   return json(row)
@@ -65,6 +72,10 @@ export async function getRequest(access: UserAccess, id: number) {
 
 interface CreateRequestBody {
   country_id?: number | string
+  // Optional — the state/province within country_id, when the userscript can detect or the
+  // Wazer can pick one (see migrations/0011_regions.sql). Requests without one still work;
+  // notifications simply use the country's channels instead of a region-specific set.
+  region_id?: number | string | null
   type?: RequestType
   permalink?: string
   lock_level?: number | null
@@ -77,9 +88,10 @@ interface CreateRequestBody {
 }
 
 export async function createRequest(body: CreateRequestBody) {
-  const { country_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key } = body
+  const { country_id, region_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key } = body
 
   if (!country_id || !Number.isInteger(Number(country_id))) return err('country_id is required')
+  if (region_id != null && !Number.isInteger(Number(region_id))) return err('region_id must be an integer')
   if (!type || !REQUEST_TYPES.includes(type)) return err(`type must be one of: ${REQUEST_TYPES.join(', ')}`)
   if (!permalink?.trim()) return err('permalink is required')
   if (lock_level != null && (lock_level < 1 || lock_level > 7)) return err('lock_level must be between 1 and 7')
@@ -93,13 +105,20 @@ export async function createRequest(body: CreateRequestBody) {
   ])
   if (!country) return err('Country not found', 404)
 
+  let region: { id: number; name: string; code: string } | null = null
+  if (region_id != null) {
+    region = await dbFirst('SELECT * FROM regions WHERE id = ? AND country_id = ?', [Number(region_id), country.id])
+    if (!region) return err('Region not found for this country', 404)
+  }
+
   const effectiveLock = type === 'downlock' ? (lock_level ?? null) : null
 
   const result = await dbRun(
-    `INSERT INTO requests (country_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO requests (country_id, region_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Number(country_id),
+      region?.id ?? null,
       type,
       permalink.trim(),
       effectiveLock,
@@ -110,14 +129,10 @@ export async function createRequest(body: CreateRequestBody) {
     ],
   )
 
-  const row = await dbFirst<RequestWithCountry>(
-    `SELECT r.*, c.name AS country_name, c.code AS country_code
-     FROM requests r JOIN countries c ON c.id = r.country_id WHERE r.id = ?`,
-    [result.meta.last_row_id],
-  )
+  const row = await dbFirst<RequestWithCountry>(`${REQUEST_SELECT} WHERE r.id = ?`, [result.meta.last_row_id])
 
   // Fire notifications in the background (non-blocking)
-  waitUntil(fireNotifications(row!, country.name, country.code))
+  waitUntil(fireNotifications(row!, country.name, country.code, region?.name ?? null, region?.code ?? null))
 
   return json(row, 201)
 }
@@ -138,11 +153,7 @@ export async function updateRequest(
     `UPDATE requests SET status=?, notes=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
     [status, notes, id],
   )
-  const row = await dbFirst<RequestWithCountry>(
-    `SELECT r.*, c.name AS country_name, c.code AS country_code
-     FROM requests r JOIN countries c ON c.id = r.country_id WHERE r.id = ?`,
-    [id],
-  )
+  const row = await dbFirst<RequestWithCountry>(`${REQUEST_SELECT} WHERE r.id = ?`, [id])
   return json(row)
 }
 

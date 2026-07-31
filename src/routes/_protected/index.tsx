@@ -18,7 +18,7 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { Camera, Trash2 } from 'lucide-react'
-import { useCountries, useDeleteRequest, useDeleteRequests, useRequestStats, useRequests } from '@/lib/queries'
+import { useCountries, useDeleteRequest, useDeleteRequests, useRegions, useRequestStats, useRequests } from '@/lib/queries'
 import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
 
 export const Route = createFileRoute('/_protected/')({ component: Dashboard })
@@ -31,20 +31,24 @@ const TYPE_OPTIONS = [
 
 function Dashboard() {
   const [countryId, setCountryId] = useState<string | null>(null)
+  const [regionId, setRegionId] = useState<string | null>(null)
   const [type, setType] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [appliedFilter, setAppliedFilter] = useState<{
     countryId: string | null
+    regionId: string | null
     type: string | null
     status: string | null
-  }>({ countryId: null, type: null, status: null })
+  }>({ countryId: null, regionId: null, type: null, status: null })
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   const countriesQuery = useCountries()
+  const regionsQuery = useRegions(countryId)
   const statsQuery = useRequestStats()
   const requestsQuery = useRequests({
     countryId: appliedFilter.countryId,
+    regionId: appliedFilter.regionId,
     type: appliedFilter.type,
     status: appliedFilter.status,
     limit: PAGE_SIZE,
@@ -54,6 +58,7 @@ function Dashboard() {
   const deleteRequests = useDeleteRequests()
 
   const countries = countriesQuery.data ?? []
+  const regions = regionsQuery.data ?? []
   const data = requestsQuery.data
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0
   const allOnPageSelected = !!data?.data.length && data.data.every((r) => selectedIds.has(r.id))
@@ -66,7 +71,12 @@ function Dashboard() {
 
   function applyFilters() {
     setPage(1)
-    setAppliedFilter({ countryId, type, status })
+    setAppliedFilter({ countryId, regionId, type, status })
+  }
+
+  function handleCountryChange(value: string | null) {
+    setCountryId(value)
+    setRegionId(null)
   }
 
   function handleDelete(id: number) {
@@ -112,7 +122,16 @@ function Dashboard() {
             clearable
             data={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` }))}
             value={countryId}
-            onChange={setCountryId}
+            onChange={handleCountryChange}
+          />
+          <Select
+            label="Region"
+            placeholder={countryId ? 'All regions' : 'Select a country first'}
+            clearable
+            disabled={!countryId}
+            data={regions.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+            value={regionId}
+            onChange={setRegionId}
           />
           <Select label="Type" placeholder="All types" clearable data={TYPE_OPTIONS} value={type} onChange={setType} />
           <Select
@@ -222,7 +241,7 @@ function Dashboard() {
                   </Table.Td>
                   <Table.Td>{r.id}</Table.Td>
                   <Table.Td>
-                    {r.country_code}
+                    {r.region_code ? `${r.region_code}, ${r.country_code}` : r.country_code}
                   </Table.Td>
                   <Table.Td>
                     <TypeBadge type={r.type} />

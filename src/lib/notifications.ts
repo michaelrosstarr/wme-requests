@@ -7,6 +7,7 @@ import { decryptSecret } from './crypto'
 export interface NotificationChannel {
   id: number
   country_id: number
+  region_id: number | null
   label: string
   platform: 'slack' | 'discord' | 'telegram' | 'email' | 'webhook' | 'google_sheets'
   event_type: 'global' | 'downlock' | 'imagery'
@@ -24,6 +25,7 @@ export interface NotificationChannel {
 export interface RequestRow {
   id: number
   country_id: number
+  region_id: number | null
   type: 'downlock' | 'imagery'
   permalink: string
   lock_level: number | null
@@ -44,9 +46,10 @@ function applyPrefixTemplate(template: string, vars: PrefixVars) {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => vars[key] ?? match)
 }
 
-function buildMessage(request: RequestRow, countryName: string) {
+function buildMessage(request: RequestRow, countryName: string, regionName: string | null) {
   const typeLabel = request.type === 'downlock' ? 'Downlock Request' : 'Imagery Request'
-  const title = `${typeLabel} — ${countryName}`
+  const place = regionName ? `${regionName}, ${countryName}` : countryName
+  const title = `${typeLabel} — ${place}`
   const color = request.type === 'downlock' ? 0xe74c3c : 0x3498db
   return {
     title,
@@ -253,6 +256,8 @@ async function sendGoogleSheet(
     vars.type,
     vars.country_name,
     vars.country_code,
+    vars.region_name,
+    vars.region_code,
     msg.permalink,
     msg.lockLevel ?? '',
     msg.editorRank ?? '',
@@ -279,16 +284,38 @@ async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typ
   }
 }
 
-export async function fireNotifications(request: RequestRow, countryName: string, countryCode: string) {
-  const channels = await dbAll<NotificationChannel>(
-    `SELECT * FROM notification_channels WHERE country_id = ? AND event_type IN ('global', ?)`,
-    [request.country_id, request.type],
+// Region-scoped channels take priority: if the request's region has any channels matching
+// this event type, only those fire. Otherwise (no region, or the region has none configured)
+// falls back to the country's own (region_id IS NULL) channels — see migrations/0011_regions.sql.
+async function audienceChannels(countryId: number, regionId: number | null, requestType: 'downlock' | 'imagery') {
+  if (regionId) {
+    const regionChannels = await dbAll<NotificationChannel>(
+      `SELECT * FROM notification_channels WHERE region_id = ? AND event_type IN ('global', ?)`,
+      [regionId, requestType],
+    )
+    if (regionChannels.length) return regionChannels
+  }
+  return dbAll<NotificationChannel>(
+    `SELECT * FROM notification_channels WHERE country_id = ? AND region_id IS NULL AND event_type IN ('global', ?)`,
+    [countryId, requestType],
   )
+}
+
+export async function fireNotifications(
+  request: RequestRow,
+  countryName: string,
+  countryCode: string,
+  regionName: string | null = null,
+  regionCode: string | null = null,
+) {
+  const channels = await audienceChannels(request.country_id, request.region_id, request.type)
   if (!channels.length) return
-  const msg = buildMessage(request, countryName)
+  const msg = buildMessage(request, countryName, regionName)
   const vars: PrefixVars = {
     country_code: countryCode,
     country_name: countryName,
+    region_code: regionCode || '',
+    region_name: regionName || '',
     lock_level: request.lock_level != null ? String(request.lock_level) : '',
     editor_rank: request.editor_rank != null ? String(request.editor_rank) : '',
     type: request.type,
@@ -297,10 +324,18 @@ export async function fireNotifications(request: RequestRow, countryName: string
   await Promise.allSettled(channels.map((ch) => dispatchChannel(ch, msg, vars)))
 }
 
-export async function sendTestMessage(channel: NotificationChannel, countryName: string, countryCode: string) {
+export async function sendTestMessage(
+  channel: NotificationChannel,
+  countryName: string,
+  countryCode: string,
+  regionName: string | null = null,
+  regionCode: string | null = null,
+) {
   const vars: PrefixVars = {
     country_code: countryCode,
     country_name: countryName,
+    region_code: regionCode || '',
+    region_name: regionName || '',
     lock_level: '3',
     editor_rank: '3',
     type: channel.event_type === 'global' ? 'downlock' : channel.event_type,

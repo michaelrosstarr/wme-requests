@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Alert, Button, Checkbox, Code, Group, Modal, Select, Stack, Text, Textarea, TextInput } from '@mantine/core'
 import { ShieldCheck } from 'lucide-react'
 import { useForm } from '@mantine/form'
-import { useCreateChannel, useUpdateChannel, type ChannelFormValues } from '@/lib/queries'
+import { useCreateChannel, useRegions, useUpdateChannel, type ChannelFormValues } from '@/lib/queries'
 import type { Channel } from '@/lib/types'
 
 interface Props {
@@ -31,6 +31,7 @@ const EMPTY_VALUES: ChannelFormValues = {
   label: '',
   platform: 'slack',
   event_type: 'global',
+  region_id: null,
   webhook_url: '',
   bot_token: '',
   chat_id: '',
@@ -46,6 +47,8 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
   const isEdit = !!channel
   const create = useCreateChannel()
   const update = useUpdateChannel()
+  const regionsQuery = useRegions(countryId)
+  const regions = regionsQuery.data ?? []
 
   const form = useForm<ChannelFormValues>({
     initialValues: EMPTY_VALUES,
@@ -73,6 +76,7 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
               label: channel.label,
               platform: channel.platform,
               event_type: channel.event_type,
+              region_id: channel.region_id,
               webhook_url: channel.webhook_url ?? '',
               bot_token: channel.bot_token ?? '',
               chat_id: channel.chat_id ?? '',
@@ -96,6 +100,7 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
       label: values.label.trim(),
       platform: values.platform,
       event_type: values.event_type,
+      region_id: values.region_id,
       webhook_url: usesWebhookUrl ? values.webhook_url?.trim() || null : null,
       bot_token: values.platform === 'telegram' ? values.bot_token?.trim() || null : null,
       chat_id: values.platform === 'telegram' ? values.chat_id?.trim() || null : null,
@@ -157,6 +162,16 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
             allowDeselect={false}
             disabled={saving}
             {...form.getInputProps('event_type')}
+          />
+          <Select
+            label="Region"
+            placeholder="Country-wide (all regions)"
+            description="Scopes this channel to one region. Requests in a region with no matching channels fall back to the country-wide ones."
+            data={regions.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+            value={form.values.region_id != null ? String(form.values.region_id) : null}
+            onChange={(v) => form.setFieldValue('region_id', v ? Number(v) : null)}
+            disabled={saving || !regions.length}
+            clearable
           />
           {showWebhookUrl && (
             <TextInput

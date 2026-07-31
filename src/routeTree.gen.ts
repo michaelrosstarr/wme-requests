@@ -24,12 +24,14 @@ import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiChannelsIdRouteImport } from './routes/api/channels/$id'
 import { Route as ApiCountriesIdRouteImport } from './routes/api/countries/$id'
+import { Route as ApiRegionsIdRouteImport } from './routes/api/regions/$id'
 import { Route as ApiReportsByUserRouteImport } from './routes/api/reports/by-user'
 import { Route as ApiRequestsIdRouteImport } from './routes/api/requests/$id'
 import { Route as ApiScreenshotsKeyRouteImport } from './routes/api/screenshots/$key'
 import { Route as ApiUsersInviteRouteImport } from './routes/api/users/invite'
 import { Route as ApiChannelsIdTestRouteImport } from './routes/api/channels/$id/test'
 import { Route as ApiCountriesIdChannelsRouteImport } from './routes/api/countries/$id/channels'
+import { Route as ApiCountriesIdRegionsRouteImport } from './routes/api/countries/$id/regions'
 import { Route as ApiUsersIdAccessRouteImport } from './routes/api/users/$id/access'
 import { Route as ApiUsersIdResetPasswordRouteImport } from './routes/api/users/$id/reset-password'
 
@@ -107,6 +109,11 @@ const ApiCountriesIdRoute = ApiCountriesIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiCountriesRoute,
 } as any)
+const ApiRegionsIdRoute = ApiRegionsIdRouteImport.update({
+  id: '/api/regions/$id',
+  path: '/api/regions/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiReportsByUserRoute = ApiReportsByUserRouteImport.update({
   id: '/api/reports/by-user',
   path: '/api/reports/by-user',
@@ -137,6 +144,11 @@ const ApiCountriesIdChannelsRoute = ApiCountriesIdChannelsRouteImport.update({
   path: '/channels',
   getParentRoute: () => ApiCountriesIdRoute,
 } as any)
+const ApiCountriesIdRegionsRoute = ApiCountriesIdRegionsRouteImport.update({
+  id: '/regions',
+  path: '/regions',
+  getParentRoute: () => ApiCountriesIdRoute,
+} as any)
 const ApiUsersIdAccessRoute = ApiUsersIdAccessRouteImport.update({
   id: '/$id/access',
   path: '/$id/access',
@@ -163,12 +175,14 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
+  '/api/regions/$id': typeof ApiRegionsIdRoute
   '/api/reports/by-user': typeof ApiReportsByUserRoute
   '/api/requests/$id': typeof ApiRequestsIdRoute
   '/api/screenshots/$key': typeof ApiScreenshotsKeyRoute
   '/api/users/invite': typeof ApiUsersInviteRoute
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
+  '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
 }
@@ -187,12 +201,14 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
+  '/api/regions/$id': typeof ApiRegionsIdRoute
   '/api/reports/by-user': typeof ApiReportsByUserRoute
   '/api/requests/$id': typeof ApiRequestsIdRoute
   '/api/screenshots/$key': typeof ApiScreenshotsKeyRoute
   '/api/users/invite': typeof ApiUsersInviteRoute
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
+  '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
 }
@@ -213,12 +229,14 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
+  '/api/regions/$id': typeof ApiRegionsIdRoute
   '/api/reports/by-user': typeof ApiReportsByUserRoute
   '/api/requests/$id': typeof ApiRequestsIdRoute
   '/api/screenshots/$key': typeof ApiScreenshotsKeyRoute
   '/api/users/invite': typeof ApiUsersInviteRoute
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
+  '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
 }
@@ -239,12 +257,14 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/channels/$id'
     | '/api/countries/$id'
+    | '/api/regions/$id'
     | '/api/reports/by-user'
     | '/api/requests/$id'
     | '/api/screenshots/$key'
     | '/api/users/invite'
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
+    | '/api/countries/$id/regions'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
   fileRoutesByTo: FileRoutesByTo
@@ -263,12 +283,14 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/channels/$id'
     | '/api/countries/$id'
+    | '/api/regions/$id'
     | '/api/reports/by-user'
     | '/api/requests/$id'
     | '/api/screenshots/$key'
     | '/api/users/invite'
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
+    | '/api/countries/$id/regions'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
   id:
@@ -288,12 +310,14 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/channels/$id'
     | '/api/countries/$id'
+    | '/api/regions/$id'
     | '/api/reports/by-user'
     | '/api/requests/$id'
     | '/api/screenshots/$key'
     | '/api/users/invite'
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
+    | '/api/countries/$id/regions'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
   fileRoutesById: FileRoutesById
@@ -310,6 +334,7 @@ export interface RootRouteChildren {
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChannelsIdRoute: typeof ApiChannelsIdRouteWithChildren
+  ApiRegionsIdRoute: typeof ApiRegionsIdRoute
   ApiReportsByUserRoute: typeof ApiReportsByUserRoute
 }
 
@@ -420,6 +445,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCountriesIdRouteImport
       parentRoute: typeof ApiCountriesRoute
     }
+    '/api/regions/$id': {
+      id: '/api/regions/$id'
+      path: '/api/regions/$id'
+      fullPath: '/api/regions/$id'
+      preLoaderRoute: typeof ApiRegionsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/reports/by-user': {
       id: '/api/reports/by-user'
       path: '/api/reports/by-user'
@@ -462,6 +494,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCountriesIdChannelsRouteImport
       parentRoute: typeof ApiCountriesIdRoute
     }
+    '/api/countries/$id/regions': {
+      id: '/api/countries/$id/regions'
+      path: '/regions'
+      fullPath: '/api/countries/$id/regions'
+      preLoaderRoute: typeof ApiCountriesIdRegionsRouteImport
+      parentRoute: typeof ApiCountriesIdRoute
+    }
     '/api/users/$id/access': {
       id: '/api/users/$id/access'
       path: '/$id/access'
@@ -497,10 +536,12 @@ const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(
 
 interface ApiCountriesIdRouteChildren {
   ApiCountriesIdChannelsRoute: typeof ApiCountriesIdChannelsRoute
+  ApiCountriesIdRegionsRoute: typeof ApiCountriesIdRegionsRoute
 }
 
 const ApiCountriesIdRouteChildren: ApiCountriesIdRouteChildren = {
   ApiCountriesIdChannelsRoute: ApiCountriesIdChannelsRoute,
+  ApiCountriesIdRegionsRoute: ApiCountriesIdRegionsRoute,
 }
 
 const ApiCountriesIdRouteWithChildren = ApiCountriesIdRoute._addFileChildren(
@@ -583,6 +624,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUsersRoute: ApiUsersRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChannelsIdRoute: ApiChannelsIdRouteWithChildren,
+  ApiRegionsIdRoute: ApiRegionsIdRoute,
   ApiReportsByUserRoute: ApiReportsByUserRoute,
 }
 export const routeTree = rootRouteImport
