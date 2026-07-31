@@ -2,15 +2,7 @@ import { dbAll, dbFirst, dbRun, isURL, isEmail, PLATFORMS, EVENT_TYPES, type Pla
 import { json, err } from './http'
 import { sendTestMessage, type NotificationChannel } from './notifications'
 import { canAccessCountry, type UserAccess } from './access'
-import { encryptSecret } from './crypto'
-import type { GoogleServiceAccount } from './google-sheets'
-
-// google_credentials_encrypted never leaves the server — API consumers only ever see
-// whether a channel has credentials configured, via has_google_credentials.
-function sanitizeChannel(channel: NotificationChannel & { region_name?: string | null; region_code?: string | null }) {
-  const { google_credentials_encrypted, ...rest } = channel
-  return { ...rest, has_google_credentials: !!google_credentials_encrypted }
-}
+import { credentialExists } from './credentials'
 
 export async function getChannels(access: UserAccess, countryId: number) {
   const country = await dbFirst('SELECT id FROM countries WHERE id = ?', [countryId])
@@ -22,7 +14,7 @@ export async function getChannels(access: UserAccess, countryId: number) {
      WHERE ch.country_id = ? ORDER BY ch.event_type, ch.platform`,
     [countryId],
   )
-  return json(rows.map(sanitizeChannel))
+  return json(rows)
 }
 
 interface ChannelBody {
@@ -40,10 +32,10 @@ interface ChannelBody {
   discord_forum?: boolean
   spreadsheet_id?: string | null
   sheet_name?: string | null
-  // Raw service account JSON pasted in the form — never stored as-is. On update, omitting
-  // this (undefined) keeps the channel's existing encrypted credentials; the client never
-  // gets the plaintext back to resubmit unchanged, so "leave blank to keep" is the only option.
-  google_service_account_json?: string | null
+  // References a row in `credentials` (see src/lib/credentials.ts) — reusable across
+  // channels, rather than a secret pasted directly into this channel.
+  google_credential_id?: number | string | null
+  email_credential_id?: number | string | null
 }
 
 // Resolves+validates an optional region_id against the channel's country. Returns the
@@ -54,6 +46,21 @@ async function resolveRegionId(countryId: number, regionId: ChannelBody['region_
   const region = await dbFirst('SELECT id FROM regions WHERE id = ? AND country_id = ?', [Number(regionId), countryId])
   if (!region) return { error: 'Region not found for this country' }
   return { id: Number(regionId) }
+}
+
+// Resolves+validates an optional credential reference. Returns the normalized id (or null),
+// or an error message — doesn't decrypt anything, just confirms the row exists and is the
+// right kind of credential.
+async function resolveCredentialId(
+  value: number | string | null | undefined,
+  kind: 'google' | 'email',
+): Promise<{ id: number | null } | { error: string }> {
+  if (value == null || value === '') return { id: null }
+  if (!Number.isInteger(Number(value))) return { error: `${kind}_credential_id must be an integer` }
+  if (!(await credentialExists(Number(value), kind))) {
+    return { error: `${kind === 'google' ? 'Google' : 'Email'} credential not found` }
+  }
+  return { id: Number(value) }
 }
 
 // Returns an error message if the platform-specific required fields are missing/invalid, else null.
@@ -75,21 +82,6 @@ function validatePlatformFields(
   return null
 }
 
-// Parses+validates a pasted Google service account key. Returns the encrypted string to
-// store, or an error message.
-async function encryptGoogleCredentials(raw: string): Promise<{ encrypted: string } | { error: string }> {
-  let parsed: Partial<GoogleServiceAccount>
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return { error: 'Google service account key must be valid JSON' }
-  }
-  if (!parsed.client_email || !parsed.private_key) {
-    return { error: 'Google service account JSON must include client_email and private_key' }
-  }
-  return { encrypted: await encryptSecret(raw) }
-}
-
 export async function createChannel(access: UserAccess, countryId: number, body: ChannelBody) {
   const country = await dbFirst('SELECT id FROM countries WHERE id = ?', [countryId])
   if (!country) return err('Country not found', 404)
@@ -108,7 +100,6 @@ export async function createChannel(access: UserAccess, countryId: number, body:
     discord_forum,
     spreadsheet_id,
     sheet_name,
-    google_service_account_json,
   } = body
   if (!label?.trim()) return err('label is required')
   if (!platform || !PLATFORMS.includes(platform)) return err(`platform must be one of: ${PLATFORMS.join(', ')}`)
@@ -121,18 +112,18 @@ export async function createChannel(access: UserAccess, countryId: number, body:
   const platformError = validatePlatformFields(platform, { webhook_url, bot_token, chat_id, email_to, spreadsheet_id })
   if (platformError) return err(platformError)
 
-  let googleCredentialsEncrypted: string | null = null
-  if (platform === 'google_sheets') {
-    if (!google_service_account_json?.trim()) return err('A Google service account key is required for google_sheets')
-    const result = await encryptGoogleCredentials(google_service_account_json.trim())
-    if ('error' in result) return err(result.error)
-    googleCredentialsEncrypted = result.encrypted
-  }
+  const resolvedGoogleCred = await resolveCredentialId(body.google_credential_id, 'google')
+  if ('error' in resolvedGoogleCred) return err(resolvedGoogleCred.error)
+  if (platform === 'google_sheets' && !resolvedGoogleCred.id) return err('A Google credential is required for google_sheets')
+
+  const resolvedEmailCred = await resolveCredentialId(body.email_credential_id, 'email')
+  if ('error' in resolvedEmailCred) return err(resolvedEmailCred.error)
+  if (platform === 'email' && !resolvedEmailCred.id) return err('An email credential is required for email')
 
   const result = await dbRun(
     `INSERT INTO notification_channels
-       (country_id, region_id, label, platform, event_type, webhook_url, bot_token, chat_id, custom_prefix, email_to, discord_forum, spreadsheet_id, sheet_name, google_credentials_encrypted)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (country_id, region_id, label, platform, event_type, webhook_url, bot_token, chat_id, custom_prefix, email_to, discord_forum, spreadsheet_id, sheet_name, google_credential_id, email_credential_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       countryId,
       resolvedRegion.id,
@@ -147,13 +138,14 @@ export async function createChannel(access: UserAccess, countryId: number, body:
       discord_forum ? 1 : 0,
       spreadsheet_id?.trim() || null,
       sheet_name?.trim() || null,
-      googleCredentialsEncrypted,
+      resolvedGoogleCred.id,
+      resolvedEmailCred.id,
     ],
   )
   const row = await dbFirst<NotificationChannel>('SELECT * FROM notification_channels WHERE id = ?', [
     result.meta.last_row_id,
   ])
-  return json(sanitizeChannel(row!), 201)
+  return json(row!, 201)
 }
 
 export async function updateChannel(access: UserAccess, id: number, body: ChannelBody) {
@@ -183,20 +175,30 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
     body.spreadsheet_id !== undefined ? body.spreadsheet_id?.trim() || null : existing.spreadsheet_id
   const sheet_name = body.sheet_name !== undefined ? body.sheet_name?.trim() || null : existing.sheet_name
 
-  let googleCredentialsEncrypted = existing.google_credentials_encrypted
-  if (body.google_service_account_json?.trim()) {
-    const result = await encryptGoogleCredentials(body.google_service_account_json.trim())
-    if ('error' in result) return err(result.error)
-    googleCredentialsEncrypted = result.encrypted
+  let google_credential_id = existing.google_credential_id
+  if (body.google_credential_id !== undefined) {
+    const resolved = await resolveCredentialId(body.google_credential_id, 'google')
+    if ('error' in resolved) return err(resolved.error)
+    google_credential_id = resolved.id
   }
-  if (platform === 'google_sheets' && !googleCredentialsEncrypted) {
-    return err('A Google service account key is required for google_sheets')
+  if (platform === 'google_sheets' && !google_credential_id) {
+    return err('A Google credential is required for google_sheets')
+  }
+
+  let email_credential_id = existing.email_credential_id
+  if (body.email_credential_id !== undefined) {
+    const resolved = await resolveCredentialId(body.email_credential_id, 'email')
+    if ('error' in resolved) return err(resolved.error)
+    email_credential_id = resolved.id
+  }
+  if (platform === 'email' && !email_credential_id) {
+    return err('An email credential is required for email')
   }
 
   await dbRun(
     `UPDATE notification_channels
      SET label=?, platform=?, event_type=?, region_id=?, webhook_url=?, bot_token=?, chat_id=?, custom_prefix=?, email_to=?,
-         discord_forum=?, spreadsheet_id=?, sheet_name=?, google_credentials_encrypted=?
+         discord_forum=?, spreadsheet_id=?, sheet_name=?, google_credential_id=?, email_credential_id=?
      WHERE id=?`,
     [
       label,
@@ -211,12 +213,13 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
       discord_forum,
       spreadsheet_id,
       sheet_name,
-      googleCredentialsEncrypted,
+      google_credential_id,
+      email_credential_id,
       id,
     ],
   )
   const row = await dbFirst<NotificationChannel>('SELECT * FROM notification_channels WHERE id = ?', [id])
-  return json(sanitizeChannel(row!))
+  return json(row!)
 }
 
 export async function deleteChannel(access: UserAccess, id: number) {

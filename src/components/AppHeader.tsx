@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { Anchor, Button, Container, Group, Title } from '@mantine/core'
-import { LogOut, Map } from 'lucide-react'
+import { LogIn, LogOut, Map } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 
 export default function AppHeader() {
@@ -34,9 +34,13 @@ export default function AppHeader() {
           <Button component={Link} to="/reports" variant={pathname === '/reports' ? 'filled' : 'subtle'}>
             Reports
           </Button>
-          {session && (
+          {session ? (
             <Button variant="default" leftSection={<LogOut size={14} />} onClick={handleSignOut}>
               Sign out
+            </Button>
+          ) : (
+            <Button component={Link} to="/login" variant="default" leftSection={<LogIn size={14} />}>
+              Sign in
             </Button>
           )}
         </Group>

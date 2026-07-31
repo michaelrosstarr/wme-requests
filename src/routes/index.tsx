@@ -20,8 +20,9 @@ import { notifications } from '@mantine/notifications'
 import { Camera, Trash2 } from 'lucide-react'
 import { useCountries, useDeleteRequest, useDeleteRequests, useRegions, useRequestStats, useRequests } from '@/lib/queries'
 import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
+import { authClient } from '@/lib/auth-client'
 
-export const Route = createFileRoute('/_protected/')({ component: Dashboard })
+export const Route = createFileRoute('/')({ component: Dashboard })
 
 const PAGE_SIZE = 50
 const TYPE_OPTIONS = [
@@ -30,6 +31,8 @@ const TYPE_OPTIONS = [
 ]
 
 function Dashboard() {
+  const { data: session } = authClient.useSession()
+  const canEdit = !!session
   const [countryId, setCountryId] = useState<string | null>(null)
   const [regionId, setRegionId] = useState<string | null>(null)
   const [type, setType] = useState<string | null>(null)
@@ -157,7 +160,7 @@ function Dashboard() {
         <Group justify="space-between" mb="sm">
           <Title order={4}>Requests</Title>
           <Group gap="sm">
-            {selectedIds.size > 0 && (
+            {canEdit && selectedIds.size > 0 && (
               <Button
                 size="xs"
                 color="red"
@@ -181,14 +184,16 @@ function Dashboard() {
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th style={{ width: 36 }}>
-                  <Checkbox
-                    aria-label="Select all requests on this page"
-                    checked={allOnPageSelected}
-                    indeterminate={someOnPageSelected}
-                    onChange={toggleSelectAll}
-                  />
-                </Table.Th>
+                {canEdit && (
+                  <Table.Th style={{ width: 36 }}>
+                    <Checkbox
+                      aria-label="Select all requests on this page"
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={toggleSelectAll}
+                    />
+                  </Table.Th>
+                )}
                 <Table.Th>#</Table.Th>
                 <Table.Th>Country</Table.Th>
                 <Table.Th>Type</Table.Th>
@@ -199,13 +204,13 @@ function Dashboard() {
                 <Table.Th>Notes</Table.Th>
                 {/* <Table.Th>Status</Table.Th> */}
                 <Table.Th>Created</Table.Th>
-                <Table.Th />
+                {canEdit && <Table.Th />}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {requestsQuery.isLoading && (
                 <Table.Tr>
-                  <Table.Td colSpan={12}>
+                  <Table.Td colSpan={canEdit ? 11 : 9}>
                     <Text c="dimmed" ta="center">
                       Loading…
                     </Text>
@@ -214,7 +219,7 @@ function Dashboard() {
               )}
               {requestsQuery.isError && (
                 <Table.Tr>
-                  <Table.Td colSpan={12}>
+                  <Table.Td colSpan={canEdit ? 11 : 9}>
                     <Text c="red" ta="center">
                       Error: {(requestsQuery.error as Error).message}
                     </Text>
@@ -223,7 +228,7 @@ function Dashboard() {
               )}
               {data && !data.data.length && (
                 <Table.Tr>
-                  <Table.Td colSpan={12}>
+                  <Table.Td colSpan={canEdit ? 11 : 9}>
                     <Text c="dimmed" ta="center">
                       No requests found.
                     </Text>
@@ -232,13 +237,15 @@ function Dashboard() {
               )}
               {data?.data.map((r) => (
                 <Table.Tr key={r.id}>
-                  <Table.Td>
-                    <Checkbox
-                      aria-label={`Select request ${r.id}`}
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => toggleSelect(r.id)}
-                    />
-                  </Table.Td>
+                  {canEdit && (
+                    <Table.Td>
+                      <Checkbox
+                        aria-label={`Select request ${r.id}`}
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleSelect(r.id)}
+                      />
+                    </Table.Td>
+                  )}
                   <Table.Td>{r.id}</Table.Td>
                   <Table.Td>
                     {r.region_code ? `${r.region_code}, ${r.country_code}` : r.country_code}
@@ -285,11 +292,13 @@ function Dashboard() {
                   <Table.Td>
                     <Text size="xs">{fmtDate(r.created_at)}</Text>
                   </Table.Td>
-                  <Table.Td>
-                    <ActionIcon color="red" variant="light" onClick={() => handleDelete(r.id)} aria-label="Delete">
-                      <Trash2 size={16} />
-                    </ActionIcon>
-                  </Table.Td>
+                  {canEdit && (
+                    <Table.Td>
+                      <ActionIcon color="red" variant="light" onClick={() => handleDelete(r.id)} aria-label="Delete">
+                        <Trash2 size={16} />
+                      </ActionIcon>
+                    </Table.Td>
+                  )}
                 </Table.Tr>
               ))}
             </Table.Tbody>

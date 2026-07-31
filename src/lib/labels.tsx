@@ -1,6 +1,6 @@
 import { Badge } from '@mantine/core'
 import { Globe, Image, Lock, MessageSquare, Send, Gamepad2, Mail, Webhook, FileSpreadsheet } from 'lucide-react'
-import type { EventType, Platform, RequestType, Status } from './types'
+import type { CredentialType, EventType, Platform, RequestType, Status } from './types'
 
 export function TypeBadge({ type }: Readonly<{ type: RequestType }>) {
   return type === 'downlock' ? (
@@ -85,6 +85,22 @@ export function EventTypeBadge({ eventType }: Readonly<{ eventType: EventType }>
   return (
     <Badge size="xs" variant="light" leftSection={<Icon size={11} />}>
       {EVENT_TYPE_LABELS[eventType]}
+    </Badge>
+  )
+}
+
+const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
+  google_service_account: 'Google Service Account',
+  email_postmark: 'Postmark',
+  email_mailgun: 'Mailgun',
+  email_smtp: 'SMTP',
+}
+
+export function CredentialTypeBadge({ type }: Readonly<{ type: CredentialType }>) {
+  const color = type === 'google_service_account' ? 'blue' : 'grape'
+  return (
+    <Badge size="xs" variant="light" color={color}>
+      {CREDENTIAL_TYPE_LABELS[type]}
     </Badge>
   )
 }

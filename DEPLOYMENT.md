@@ -60,6 +60,14 @@ This applies everything under [`migrations/`](migrations/):
 | `0003_editor_rank.sql` | `requests.editor_rank` — the submitter's WME editor rank |
 | `0004_channel_custom_prefix.sql` | `notification_channels.custom_prefix` — the templated prefix feature |
 | `0005_channel_email.sql` | `email`/`webhook` notification platforms + `notification_channels.email_to` |
+| `0006_user_country_access.sql` | `user.is_global` + `user_countries` — per-user country scoping |
+| `0007_discord_forum_thread.sql` | `notification_channels.discord_forum` |
+| `0008_google_sheets_channel.sql` | `google_sheets` platform + `spreadsheet_id`/`sheet_name` |
+| `0009_request_screenshot.sql` | `requests.screenshot_key` |
+| `0010_channel_google_credentials.sql` | (superseded by `0012`/`0013` below) |
+| `0011_regions.sql` | `regions` — country-scoped states/provinces |
+| `0012_credentials.sql` | `credentials` — the shared Google service-account pool + per-user BYOK email credentials |
+| `0013_channel_credential_refs.sql` | `notification_channels.google_credential_id`/`email_credential_id`, replacing the old per-channel embedded credential |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -91,9 +99,12 @@ absolute links in invite and password-reset emails — without it those links wo
 that don't work outside the app. `.dev.vars` already overrides it to `http://localhost:3000` for
 local dev.
 
-## 7 — Configure Postmark for email notifications (optional)
+## 7 — Configure Postmark for system emails (optional)
 
-Only needed if you plan to use the `email` notification platform (skip this if you're only using Slack/Discord/Telegram/generic webhooks).
+This is only for the app's own transactional email — user invites and password resets (see
+step 9). It's separate from the `email` notification platform, which is BYOK and configured per
+user in the Credentials Manager (step 8) instead. Skip this step if you don't plan to invite
+users by email (you can still create accounts directly via `create-admin-user.mjs`/**Admin**).
 
 1. In your [Postmark](https://postmarkapp.com) account, verify a Sender Signature or domain to send from.
 2. Set the from-address var in `wrangler.jsonc`:
@@ -120,15 +131,20 @@ Only needed if you plan to use the `email` notification platform (skip this if y
    npm run cf-typegen
    ```
 
-## 8 — Configure Google Sheets notifications (optional)
+## 8 — Configure the Credentials Manager (optional)
 
-Only needed if you plan to use the `google_sheets` notification platform (skip this otherwise).
-Each channel has its own Google service account — useful if different notification targets
-should use different Google accounts/permissions — pasted directly into the channel's form in
-**Admin** and encrypted at rest, rather than one shared server-wide credential.
+**Admin → Credentials** holds two kinds of reusable, encrypted-at-rest credential that
+notification channels reference instead of embedding a secret directly:
 
-1. Set `CHANNEL_CREDENTIALS_KEY`, a random 256-bit key used to encrypt those per-channel
-   credentials in D1:
+- **Google Service Accounts** — a shared pool. Add one and reuse it across as many
+  `google_sheets` channels as you like; only global users can add or remove them.
+- **Email Credentials** — BYOK. Each user adds their own Postmark, Mailgun, or SMTP
+  credential, and picks it when configuring an `email` notification channel. A non-global user
+  only sees their own; global users see everyone's.
+
+Skip this step if you're not using the `google_sheets` or `email` notification platforms.
+
+1. Set `CHANNEL_CREDENTIALS_KEY`, a random 256-bit key used to encrypt every credential in D1:
 
    ```bash
    # Local development — appended to .dev.vars (already gitignored)
@@ -144,16 +160,21 @@ should use different Google accounts/permissions — pasted directly into the ch
    npm run cf-typegen
    ```
 
-2. For each Google Sheets channel you want to add: in the
-   [Google Cloud Console](https://console.cloud.google.com/), create a service account and
-   download its JSON key file, with the **Google Sheets API** enabled for that project.
-3. Share the target spreadsheet with the service account's `client_email` (Editor access) —
-   otherwise appends will fail with a permission error.
-4. In **Admin**, add (or edit) a channel, set its platform to **Google Sheet**, paste the
-   spreadsheet ID from the sheet's URL (the segment between `/d/` and `/edit`), and paste the
-   full contents of the downloaded JSON key file into **Google Service Account Key**. It's
-   encrypted before being stored and isn't shown again after saving — to rotate it later, paste
-   a new key over the old one.
+2. **For Google Sheets:** in the [Google Cloud Console](https://console.cloud.google.com/),
+   create a service account and download its JSON key file, with the **Google Sheets API**
+   enabled for that project. Share the target spreadsheet with the service account's
+   `client_email` (Editor access) — otherwise appends will fail with a permission error. In
+   **Admin → Credentials**, add a **Google Service Account** credential and paste the full
+   contents of the downloaded JSON key file — it's encrypted before being stored and isn't
+   shown again after saving. Then, when adding/editing a `google_sheets` channel, pick it from
+   the **Google Service Account** dropdown (and paste the spreadsheet ID from the sheet's URL,
+   the segment between `/d/` and `/edit`).
+3. **For email:** in **Admin → Credentials**, add an **Email Credential** with whichever
+   provider you use — a Postmark server token, a Mailgun API key + sending domain, or SMTP
+   host/port/username/password. Then, when adding/editing an `email` channel, pick it from the
+   **Email Credential** dropdown. SMTP sends over a raw TCP connection (via
+   [`worker-mailer`](https://www.npmjs.com/package/worker-mailer)) on port 587 or 465 — port 25
+   isn't reachable from Workers.
 
 ## 9 — Create your first admin account
 
@@ -182,7 +203,11 @@ existing user. Invite/reset emails require step 7's Postmark config and step 6's
 npm run dev
 ```
 
-Open `http://localhost:3000` — you'll be redirected to `/login`. Sign in with the account from step 8, then set up at least one country and notification channel from the `/admin` page before moving on (see [README § Notification Channels](README.md#notification-channels) for the channel body fields and `custom_prefix` variables).
+Open `http://localhost:3000` — the dashboard and `/reports` are viewable without signing in
+(read-only), but `/admin` redirects to `/login`. Sign in with the account from step 9, then set
+up at least one country and notification channel from the `/admin` page before moving on (see
+[README § Notification Channels](README.md#notification-channels) for the channel body fields
+and `custom_prefix` variables).
 
 ## 11 — Deploy
 

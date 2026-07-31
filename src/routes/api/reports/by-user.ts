@@ -5,7 +5,8 @@ import { getUserReport } from '@/lib/reports'
 export const Route = createFileRoute('/api/reports/by-user')({
   server: {
     handlers: apiRoute({
-      GET: ({ access }) => getUserReport(access!),
+      // Public: backs the view-only /reports page (see src/routes/reports.tsx).
+      GET: { public: true, handler: ({ access }) => getUserReport(access) },
     }),
   },
 })

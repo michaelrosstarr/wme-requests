@@ -6,22 +6,25 @@ import { Globe, Info, KeyRound, Mail, MapPin, Pencil, Plus, Send, Trash2, UserPl
 import {
   useChannels,
   useCountries,
+  useCredentials,
   useDeleteChannel,
   useDeleteCountry,
+  useDeleteCredential,
   useMe,
   useRegions,
   useResetUserPassword,
   useTestChannel,
   useUsers,
 } from '@/lib/queries'
-import { EventTypeBadge, PlatformBadge } from '@/lib/labels'
-import type { AdminUser, Channel, Country } from '@/lib/types'
+import { CredentialTypeBadge, EventTypeBadge, PlatformBadge } from '@/lib/labels'
+import type { AdminUser, Channel, Country, Credential } from '@/lib/types'
 import CountryFormModal from '@/components/CountryFormModal'
 import ChannelFormModal from '@/components/ChannelFormModal'
 import RegionsModal from '@/components/RegionsModal'
 import UserFormModal from '@/components/UserFormModal'
 import InviteUserModal from '@/components/InviteUserModal'
 import UserAccessModal from '@/components/UserAccessModal'
+import CredentialsModal from '@/components/CredentialsModal'
 
 export const Route = createFileRoute('/_protected/admin')({ component: Admin })
 
@@ -70,6 +73,28 @@ function Admin() {
     user: null,
   })
   const resetUserPassword = useResetUserPassword()
+
+  const credentialsQuery = useCredentials()
+  const credentials = credentialsQuery.data ?? []
+  const googleCredentials = credentials.filter((c) => c.type === 'google_service_account')
+  const emailCredentials = credentials.filter((c) => c.type !== 'google_service_account')
+  const [credentialModal, setCredentialModal] = useState<{
+    opened: boolean
+    kind: 'google' | 'email'
+    credential: Credential | null
+  }>({ opened: false, kind: 'email', credential: null })
+  const deleteCredential = useDeleteCredential()
+
+  function canManageCredential(c: Credential) {
+    return c.type === 'google_service_account' ? !!me?.isGlobal : me?.isGlobal || c.owner_user_id === me?.userId
+  }
+
+  function handleDeleteCredential(id: number) {
+    if (!confirm('Delete this credential? Any channel still using it will stop sending until reconfigured.')) return
+    deleteCredential.mutate(id, {
+      onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
+    })
+  }
 
   function handleDeleteCountry(id: number) {
     if (!confirm('Delete this country and all its channels and requests?')) return
@@ -321,6 +346,134 @@ function Admin() {
         </Card>
       </SimpleGrid>
 
+      <Card withBorder radius="md" p="md" mt="md">
+        <Group justify="space-between" mb="sm">
+          <Title order={4}>Credentials</Title>
+        </Group>
+        <Text size="sm" c="dimmed" mb="sm">
+          Reusable, encrypted credentials that notification channels reference instead of embedding a secret
+          directly. Google service accounts are a shared pool; email credentials are your own (bring your own key).
+        </Text>
+
+        <Group justify="space-between" mb="xs">
+          <Text fw={600} size="sm">
+            Google Service Accounts
+          </Text>
+          {me?.isGlobal && (
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={<Plus size={14} />}
+              onClick={() => setCredentialModal({ opened: true, kind: 'google', credential: null })}
+            >
+              Add
+            </Button>
+          )}
+        </Group>
+        <Stack gap="xs" mb="md">
+          {credentialsQuery.isLoading && <Text c="dimmed">Loading…</Text>}
+          {!credentialsQuery.isLoading && !googleCredentials.length && (
+            <Text c="dimmed" size="sm">
+              No Google service accounts yet.
+            </Text>
+          )}
+          {googleCredentials.map((c) => (
+            <Card key={c.id} withBorder radius="sm" p="xs">
+              <Group justify="space-between">
+                <div>
+                  <Group gap={6}>
+                    <Text fw={600}>{c.label}</Text>
+                    <CredentialTypeBadge type={c.type} />
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {c.display_identifier}
+                  </Text>
+                </div>
+                {canManageCredential(c) && (
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<Pencil size={14} />}
+                      onClick={() => setCredentialModal({ opened: true, kind: 'google', credential: c })}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="xs"
+                      color="red"
+                      variant="light"
+                      leftSection={<Trash2 size={14} />}
+                      onClick={() => handleDeleteCredential(c.id)}
+                    >
+                      Delete
+                    </Button>
+                  </Group>
+                )}
+              </Group>
+            </Card>
+          ))}
+        </Stack>
+
+        <Group justify="space-between" mb="xs">
+          <Text fw={600} size="sm">
+            Email Credentials
+          </Text>
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<Plus size={14} />}
+            onClick={() => setCredentialModal({ opened: true, kind: 'email', credential: null })}
+          >
+            Add
+          </Button>
+        </Group>
+        <Stack gap="xs">
+          {!credentialsQuery.isLoading && !emailCredentials.length && (
+            <Text c="dimmed" size="sm">
+              No email credentials yet — add your own Postmark, Mailgun, or SMTP credential to use it in an email
+              notification channel.
+            </Text>
+          )}
+          {emailCredentials.map((c) => (
+            <Card key={c.id} withBorder radius="sm" p="xs">
+              <Group justify="space-between">
+                <div>
+                  <Group gap={6}>
+                    <Text fw={600}>{c.label}</Text>
+                    <CredentialTypeBadge type={c.type} />
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {c.display_identifier}
+                  </Text>
+                </div>
+                {canManageCredential(c) && (
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<Pencil size={14} />}
+                      onClick={() => setCredentialModal({ opened: true, kind: 'email', credential: c })}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="xs"
+                      color="red"
+                      variant="light"
+                      leftSection={<Trash2 size={14} />}
+                      onClick={() => handleDeleteCredential(c.id)}
+                    >
+                      Delete
+                    </Button>
+                  </Group>
+                )}
+              </Group>
+            </Card>
+          ))}
+        </Stack>
+      </Card>
+
       {me?.isGlobal && (
         <Card withBorder radius="md" p="md" mt="md">
           <Group justify="space-between" mb="sm">
@@ -390,6 +543,12 @@ function Admin() {
         </Card>
       )}
 
+      <CredentialsModal
+        opened={credentialModal.opened}
+        kind={credentialModal.kind}
+        credential={credentialModal.credential}
+        onClose={() => setCredentialModal({ opened: false, kind: 'email', credential: null })}
+      />
       <CountryFormModal
         opened={countryModal.opened}
         country={countryModal.country}

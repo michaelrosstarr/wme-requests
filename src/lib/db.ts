@@ -21,11 +21,18 @@ export const PLATFORMS = ['slack', 'discord', 'telegram', 'email', 'webhook', 'g
 export const EVENT_TYPES = ['global', 'downlock', 'imagery'] as const
 export const REQUEST_TYPES = ['downlock', 'imagery'] as const
 export const STATUSES = ['pending', 'in_progress', 'completed', 'rejected'] as const
+export const CREDENTIAL_TYPES = [
+  'google_service_account',
+  'email_postmark',
+  'email_mailgun',
+  'email_smtp',
+] as const
 
 export type Platform = (typeof PLATFORMS)[number]
 export type EventType = (typeof EVENT_TYPES)[number]
 export type RequestType = (typeof REQUEST_TYPES)[number]
 export type Status = (typeof STATUSES)[number]
+export type CredentialType = (typeof CREDENTIAL_TYPES)[number]
 
 export function isURL(s: string) {
   try {

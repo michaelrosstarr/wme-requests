@@ -3,7 +3,7 @@ import { Badge, Container, Paper, Progress, Table, Text, Title } from '@mantine/
 import { useUserReport } from '@/lib/queries'
 import { TypeBadge } from '@/lib/labels'
 
-export const Route = createFileRoute('/_protected/reports')({ component: Reports })
+export const Route = createFileRoute('/reports')({ component: Reports })
 
 function Reports() {
   const { data, isLoading, isError, error } = useUserReport()

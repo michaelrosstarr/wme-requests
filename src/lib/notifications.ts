@@ -1,8 +1,8 @@
 import { dbAll } from './db'
-import { sendPostmarkEmail } from './postmark'
-import { appendSheetRow, type GoogleServiceAccount } from './google-sheets'
+import { appendSheetRow } from './google-sheets'
 import { screenshotUrl } from './screenshots'
-import { decryptSecret } from './crypto'
+import { resolveGoogleCredential, resolveEmailCredential } from './credentials'
+import { sendEmail as dispatchEmail } from './email/send-email'
 
 export interface NotificationChannel {
   id: number
@@ -19,7 +19,8 @@ export interface NotificationChannel {
   discord_forum: number
   spreadsheet_id: string | null
   sheet_name: string | null
-  google_credentials_encrypted: string | null
+  google_credential_id: number | null
+  email_credential_id: number | null
 }
 
 export interface RequestRow {
@@ -208,13 +209,21 @@ function buildEmailHtml(msg: ReturnType<typeof buildMessage>, prefix: string | n
   return parts.filter(Boolean).join('\n')
 }
 
-async function sendEmail(msg: ReturnType<typeof buildMessage>, prefix: string | null, toEmail: string) {
+async function sendEmail(
+  msg: ReturnType<typeof buildMessage>,
+  prefix: string | null,
+  toEmail: string,
+  emailCredentialId: number | null,
+) {
+  if (!emailCredentialId) throw new Error('No email credential configured for this channel')
+  const credential = await resolveEmailCredential(emailCredentialId)
+
   const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
   const lines = bodyLines(msg)
   if (msg.submittedBy) lines.push(`Submitted by: ${msg.submittedBy}${rankSuffix} — ${userProfileUrl(msg.submittedBy)}`)
   const subject = prefix ? `[${prefix}] ${msg.title}` : msg.title
 
-  await sendPostmarkEmail({
+  await dispatchEmail(credential, {
     to: toEmail,
     subject,
     textBody: lines.join('\n'),
@@ -248,8 +257,8 @@ async function sendGoogleSheet(
   vars: PrefixVars,
 ) {
   if (!channel.spreadsheet_id) return
-  if (!channel.google_credentials_encrypted) throw new Error('No Google service account configured for this channel')
-  const credentials = JSON.parse(await decryptSecret(channel.google_credentials_encrypted)) as GoogleServiceAccount
+  if (!channel.google_credential_id) throw new Error('No Google service account configured for this channel')
+  const credentials = await resolveGoogleCredential(channel.google_credential_id)
 
   await appendSheetRow(credentials, channel.spreadsheet_id, channel.sheet_name, [
     new Date().toISOString(),
@@ -275,7 +284,8 @@ async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typ
       await sendDiscord(channel.webhook_url, msg, prefix, !!channel.discord_forum)
     if (channel.platform === 'telegram' && channel.bot_token && channel.chat_id)
       await sendTelegram(channel.bot_token, channel.chat_id, msg, prefix)
-    if (channel.platform === 'email' && channel.email_to) await sendEmail(msg, prefix, channel.email_to)
+    if (channel.platform === 'email' && channel.email_to)
+      await sendEmail(msg, prefix, channel.email_to, channel.email_credential_id)
     if (channel.platform === 'webhook' && channel.webhook_url) await sendWebhook(channel.webhook_url, msg, prefix)
     if (channel.platform === 'google_sheets') await sendGoogleSheet(channel, msg, vars)
     return { id: channel.id, ok: true }

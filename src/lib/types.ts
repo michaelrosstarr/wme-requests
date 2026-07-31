@@ -2,6 +2,7 @@ export type RequestType = 'downlock' | 'imagery'
 export type Status = 'pending' | 'in_progress' | 'completed' | 'rejected'
 export type Platform = 'slack' | 'discord' | 'telegram' | 'email' | 'webhook' | 'google_sheets'
 export type EventType = 'global' | 'downlock' | 'imagery'
+export type CredentialType = 'google_service_account' | 'email_postmark' | 'email_mailgun' | 'email_smtp'
 
 export interface Country {
   id: number
@@ -38,7 +39,20 @@ export interface Channel {
   discord_forum: number
   spreadsheet_id: string | null
   sheet_name: string | null
-  has_google_credentials: boolean
+  google_credential_id: number | null
+  email_credential_id: number | null
+}
+
+export interface Credential {
+  id: number
+  type: CredentialType
+  // NULL for the shared Google service-account pool; the owning user's id for email_* types.
+  owner_user_id: string | null
+  label: string
+  // Non-secret identifier for display — client_email (Google) or the sending From address.
+  display_identifier: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface RequestItem {

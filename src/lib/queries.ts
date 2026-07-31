@@ -1,6 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import apiFetch from './api-client'
-import type { AdminUser, Channel, Country, Me, Region, RequestsResponse, Status, UserReportResponse } from './types'
+import type {
+  AdminUser,
+  Channel,
+  Country,
+  Credential,
+  CredentialType,
+  Me,
+  Region,
+  RequestsResponse,
+  Status,
+  UserReportResponse,
+} from './types'
 
 export function useCountries() {
   return useQuery({
@@ -160,9 +171,9 @@ export interface ChannelFormValues {
   discord_forum: boolean
   spreadsheet_id: string | null
   sheet_name: string | null
-  // Write-only: leave blank on update to keep a channel's existing credentials — the
-  // stored value is never sent back down to prefill this field (see ChannelFormModal).
-  google_service_account_json?: string | null
+  // References a row in `credentials` — see useCredentials below.
+  google_credential_id: number | null
+  email_credential_id: number | null
 }
 
 export function useCreateChannel() {
@@ -194,6 +205,48 @@ export function useDeleteChannel() {
 export function useTestChannel() {
   return useMutation({
     mutationFn: (id: number) => apiFetch(`/channels/${id}/test`, { method: 'POST' }),
+  })
+}
+
+export function useCredentials(type?: CredentialType) {
+  const search = type ? `?type=${type}` : ''
+  return useQuery({
+    queryKey: ['credentials', type ?? 'all'],
+    queryFn: () => apiFetch<Credential[]>(`/credentials${search}`),
+  })
+}
+
+export interface CredentialFormValues {
+  type: CredentialType
+  label: string
+  // Raw fields for `type` — see validatePayload in src/lib/credentials.ts. Write-only,
+  // never sent back down by the API after saving.
+  payload: Record<string, unknown>
+}
+
+export function useCreateCredential() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: CredentialFormValues) =>
+      apiFetch<Credential>('/credentials', { method: 'POST', body: JSON.stringify(vars) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+  })
+}
+
+export function useUpdateCredential() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: number; label: string; payload?: Record<string, unknown> }) =>
+      apiFetch<Credential>(`/credentials/${vars.id}`, { method: 'PUT', body: JSON.stringify(vars) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+  })
+}
+
+export function useDeleteCredential() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiFetch(`/credentials/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
   })
 }
 
