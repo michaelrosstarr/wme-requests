@@ -6,10 +6,11 @@ export const Route = createFileRoute('/api/countries')({
   server: {
     handlers: apiRoute({
       // Public: the Tampermonkey userscript reads this cross-origin from waze.com to
-      // populate its country dropdown. It has no way to do an interactive login.
-      GET: { public: true, handler: () => getCountries() },
-      POST: async ({ request }) =>
-        createCountry(await request.json().catch(() => ({})) as Parameters<typeof createCountry>[0]),
+      // populate its country dropdown. It has no way to do an interactive login. Scoped
+      // down to the caller's assigned countries when a dashboard session is present.
+      GET: { public: true, handler: ({ request }) => getCountries(request) },
+      POST: async ({ request, access }) =>
+        createCountry(access!, await request.json().catch(() => ({})) as Parameters<typeof createCountry>[1]),
     }),
   },
 })

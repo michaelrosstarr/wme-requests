@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { getAuth } from './auth'
+import { getUserAccess, type UserAccess } from './access'
 
 export function json(data: unknown, status = 200, extra: HeadersInit = {}) {
   return new Response(JSON.stringify(data), {
@@ -43,20 +44,26 @@ function withCors(response: Response, requestOrigin: string | null) {
   return new Response(response.body, { status: response.status, headers })
 }
 
-type ApiHandler = (ctx: {
+type ApiContext = {
   request: Request
   params: Record<string, string>
-}) => Promise<Response> | Response
+  // The calling user's country access. Always present for protected handlers; `null` for
+  // `public: true` handlers, which run without a session check (see src/lib/access.ts).
+  access: UserAccess | null
+}
+
+type ApiHandler = (ctx: ApiContext) => Promise<Response> | Response
 
 /** A plain handler is protected (requires a session) by default; opt out with `{ public: true, handler }`. */
 type RouteHandler = ApiHandler | { public: true; handler: ApiHandler }
 
 /**
  * Wraps route method handlers with CORS headers, a preflight OPTIONS response, a 500 fallback,
- * and — unless marked `public: true` — a session check that returns 401 when unauthenticated.
+ * and — unless marked `public: true` — a session check that returns 401 when unauthenticated
+ * and resolves the caller's country access onto `ctx.access`.
  */
 export function apiRoute(handlers: Partial<Record<'GET' | 'POST' | 'PUT' | 'DELETE', RouteHandler>>) {
-  const wrapped: Record<string, ApiHandler> = {
+  const wrapped: Record<string, (ctx: Omit<ApiContext, 'access'>) => Promise<Response> | Response> = {
     OPTIONS: (ctx) => new Response(null, { status: 204, headers: corsHeaders(ctx.request.headers.get('Origin')) }),
   }
   for (const [method, entry] of Object.entries(handlers)) {
@@ -66,11 +73,13 @@ export function apiRoute(handlers: Partial<Record<'GET' | 'POST' | 'PUT' | 'DELE
     wrapped[method] = async (ctx) => {
       const origin = ctx.request.headers.get('Origin')
       try {
+        let access: UserAccess | null = null
         if (!isPublic) {
           const session = await getAuth().api.getSession({ headers: ctx.request.headers })
           if (!session) return withCors(err('Unauthorized', 401), origin)
+          access = await getUserAccess(session.user.id)
         }
-        return withCors(await handler(ctx), origin)
+        return withCors(await handler({ ...ctx, access }), origin)
       } catch (e) {
         console.error(e)
         return withCors(err('Internal server error', 500), origin)

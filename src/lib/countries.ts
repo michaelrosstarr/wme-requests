@@ -1,5 +1,7 @@
 import { dbAll, dbFirst, dbRun } from './db'
 import { json, err } from './http'
+import { getAuth } from './auth'
+import { canAccessCountry, getUserAccess, type UserAccess } from './access'
 
 export interface Country {
   id: number
@@ -8,9 +10,16 @@ export interface Country {
   created_at: string
 }
 
-export async function getCountries() {
+// Public (the userscript reads this cross-origin, unauthenticated, to populate its country
+// dropdown) but scoped down to the caller's assigned countries when a dashboard session is
+// present — best-effort session lookup here rather than apiRoute's built-in check, since this
+// one endpoint needs to behave differently for each kind of caller.
+export async function getCountries(request: Request) {
   const rows = await dbAll<Country>('SELECT * FROM countries ORDER BY name ASC')
-  return json(rows)
+  const session = await getAuth().api.getSession({ headers: request.headers })
+  if (!session) return json(rows)
+  const access = await getUserAccess(session.user.id)
+  return json(access.isGlobal ? rows : rows.filter((c) => access.countryIds.includes(c.id)))
 }
 
 export async function getCountry(id: number) {
@@ -19,7 +28,8 @@ export async function getCountry(id: number) {
   return json(row)
 }
 
-export async function createCountry(body: { name?: string; code?: string }) {
+export async function createCountry(access: UserAccess, body: { name?: string; code?: string }) {
+  if (!access.isGlobal) return err('Only global users can add countries', 403)
   const { name, code } = body
   if (!name?.trim()) return err('name is required')
   if (!code?.trim()) return err('code is required')
@@ -37,9 +47,14 @@ export async function createCountry(body: { name?: string; code?: string }) {
   }
 }
 
-export async function updateCountry(id: number, body: { name?: string; code?: string }) {
+export async function updateCountry(
+  access: UserAccess,
+  id: number,
+  body: { name?: string; code?: string },
+) {
   const existing = await dbFirst<Country>('SELECT * FROM countries WHERE id = ?', [id])
   if (!existing) return err('Country not found', 404)
+  if (!canAccessCountry(access, id)) return err('Country not found', 404)
   const name = body.name?.trim() || existing.name
   const code = body.code?.trim() ? body.code.trim().toUpperCase() : existing.code
   try {
@@ -52,7 +67,8 @@ export async function updateCountry(id: number, body: { name?: string; code?: st
   }
 }
 
-export async function deleteCountry(id: number) {
+export async function deleteCountry(access: UserAccess, id: number) {
+  if (!canAccessCountry(access, id)) return err('Country not found', 404)
   const result = await dbRun('DELETE FROM countries WHERE id = ?', [id])
   if (!result.meta.changes) return err('Country not found', 404)
   return new Response(null, { status: 204 })

@@ -6,12 +6,13 @@ export const Route = createFileRoute('/api/countries/$id')({
   server: {
     handlers: apiRoute({
       GET: ({ params }) => getCountry(parseInt(params.id)),
-      PUT: async ({ request, params }) =>
+      PUT: async ({ request, params, access }) =>
         updateCountry(
+          access!,
           parseInt(params.id),
-          (await request.json().catch(() => ({}))) as Parameters<typeof updateCountry>[1],
+          (await request.json().catch(() => ({}))) as Parameters<typeof updateCountry>[2],
         ),
-      DELETE: ({ params }) => deleteCountry(parseInt(params.id)),
+      DELETE: ({ params, access }) => deleteCountry(access!, parseInt(params.id)),
     }),
   },
 })

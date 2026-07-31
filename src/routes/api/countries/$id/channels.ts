@@ -5,11 +5,12 @@ import { getChannels, createChannel } from '@/lib/channels'
 export const Route = createFileRoute('/api/countries/$id/channels')({
   server: {
     handlers: apiRoute({
-      GET: ({ params }) => getChannels(parseInt(params.id)),
-      POST: async ({ request, params }) =>
+      GET: ({ params, access }) => getChannels(access!, parseInt(params.id)),
+      POST: async ({ request, params, access }) =>
         createChannel(
+          access!,
           parseInt(params.id),
-          (await request.json().catch(() => ({}))) as Parameters<typeof createChannel>[1],
+          (await request.json().catch(() => ({}))) as Parameters<typeof createChannel>[2],
         ),
     }),
   },

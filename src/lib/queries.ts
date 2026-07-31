@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import apiFetch from './api-client'
-import type { Channel, Country, RequestsResponse, Status, UserReportResponse } from './types'
+import type { AdminUser, Channel, Country, Me, RequestsResponse, Status, UserReportResponse } from './types'
 
 export function useCountries() {
   return useQuery({
@@ -122,6 +122,12 @@ export interface ChannelFormValues {
   chat_id: string | null
   custom_prefix: string | null
   email_to: string | null
+  discord_forum: boolean
+  spreadsheet_id: string | null
+  sheet_name: string | null
+  // Write-only: leave blank on update to keep a channel's existing credentials — the
+  // stored value is never sent back down to prefill this field (see ChannelFormModal).
+  google_service_account_json?: string | null
 }
 
 export function useCreateChannel() {
@@ -153,5 +159,60 @@ export function useDeleteChannel() {
 export function useTestChannel() {
   return useMutation({
     mutationFn: (id: number) => apiFetch(`/channels/${id}/test`, { method: 'POST' }),
+  })
+}
+
+export function useMe() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: () => apiFetch<Me>('/me'),
+  })
+}
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ['users'],
+    queryFn: () => apiFetch<AdminUser[]>('/users'),
+  })
+}
+
+export interface UserAccessValues {
+  isGlobal: boolean
+  countryIds: number[]
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { name: string; email: string; password: string } & UserAccessValues) =>
+      apiFetch('/users', { method: 'POST', body: JSON.stringify(vars) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+export function useInviteUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { name: string; email: string } & UserAccessValues) =>
+      apiFetch('/users/invite', { method: 'POST', body: JSON.stringify(vars) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/users/${id}/reset-password`, { method: 'POST' }),
+  })
+}
+
+export function useUpdateUserAccess() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string } & UserAccessValues) =>
+      apiFetch(`/users/${vars.id}/access`, {
+        method: 'PUT',
+        body: JSON.stringify({ isGlobal: vars.isGlobal, countryIds: vars.countryIds }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   })
 }

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { Button, Code, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
+import { Alert, Button, Checkbox, Code, Group, Modal, Select, Stack, Text, Textarea, TextInput } from '@mantine/core'
+import { ShieldCheck } from 'lucide-react'
 import { useForm } from '@mantine/form'
 import { useCreateChannel, useUpdateChannel, type ChannelFormValues } from '@/lib/queries'
 import type { Channel } from '@/lib/types'
@@ -17,6 +18,7 @@ const PLATFORM_OPTIONS = [
   { value: 'telegram', label: 'Telegram' },
   { value: 'email', label: 'Email' },
   { value: 'webhook', label: 'Webhook (generic JSON)' },
+  { value: 'google_sheets', label: 'Google Sheet' },
 ]
 
 const EVENT_TYPE_OPTIONS = [
@@ -34,6 +36,10 @@ const EMPTY_VALUES: ChannelFormValues = {
   chat_id: '',
   custom_prefix: '',
   email_to: '',
+  discord_forum: false,
+  spreadsheet_id: '',
+  sheet_name: '',
+  google_service_account_json: '',
 }
 
 export default function ChannelFormModal({ opened, onClose, countryId, channel }: Readonly<Props>) {
@@ -52,6 +58,10 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
       bot_token: (v, values) => (values.platform === 'telegram' && !v ? 'Bot token is required' : null),
       chat_id: (v, values) => (values.platform === 'telegram' && !v ? 'Chat ID is required' : null),
       email_to: (v, values) => (values.platform === 'email' && !v ? 'Recipient email is required' : null),
+      spreadsheet_id: (v, values) =>
+        values.platform === 'google_sheets' && !v ? 'Spreadsheet ID is required' : null,
+      google_service_account_json: (v, values) =>
+        values.platform === 'google_sheets' && !isEdit && !v ? 'A Google service account key is required' : null,
     },
   })
 
@@ -68,6 +78,11 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
               chat_id: channel.chat_id ?? '',
               custom_prefix: channel.custom_prefix ?? '',
               email_to: channel.email_to ?? '',
+              discord_forum: !!channel.discord_forum,
+              spreadsheet_id: channel.spreadsheet_id ?? '',
+              sheet_name: channel.sheet_name ?? '',
+              // Never prefilled — the server doesn't return the stored credentials.
+              google_service_account_json: '',
             }
           : EMPTY_VALUES,
       )
@@ -86,6 +101,11 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
       chat_id: values.platform === 'telegram' ? values.chat_id?.trim() || null : null,
       custom_prefix: values.custom_prefix?.trim() || null,
       email_to: values.platform === 'email' ? values.email_to?.trim() || null : null,
+      discord_forum: values.platform === 'discord' ? values.discord_forum : false,
+      spreadsheet_id: values.platform === 'google_sheets' ? values.spreadsheet_id?.trim() || null : null,
+      sheet_name: values.platform === 'google_sheets' ? values.sheet_name?.trim() || null : null,
+      google_service_account_json:
+        values.platform === 'google_sheets' ? values.google_service_account_json?.trim() || null : null,
     }
     try {
       if (isEdit && channel) {
@@ -103,7 +123,9 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
   const isTelegram = platform === 'telegram'
   const isEmail = platform === 'email'
   const isWebhook = platform === 'webhook'
-  const showWebhookUrl = platform === 'slack' || platform === 'discord' || isWebhook
+  const isDiscord = platform === 'discord'
+  const isGoogleSheets = platform === 'google_sheets'
+  const showWebhookUrl = platform === 'slack' || isDiscord || isWebhook
   const saving = create.isPending || update.isPending
 
   return (
@@ -144,6 +166,51 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
               disabled={saving}
               {...form.getInputProps('webhook_url')}
             />
+          )}
+          {isDiscord && (
+            <Checkbox
+              label="Post as a new thread in a Discord Forum channel"
+              description="The webhook must point at a Forum channel. Each notification creates a new forum post — Discord doesn't support posting further replies into it via webhook."
+              disabled={saving}
+              {...form.getInputProps('discord_forum', { type: 'checkbox' })}
+            />
+          )}
+          {isGoogleSheets && (
+            <>
+              <TextInput
+                label="Spreadsheet ID"
+                placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                description="The long ID in the sheet's URL, between /d/ and /edit."
+                disabled={saving}
+                {...form.getInputProps('spreadsheet_id')}
+              />
+              <TextInput
+                label="Sheet / Tab Name (optional)"
+                placeholder="Sheet1"
+                description="Defaults to Sheet1 if left blank."
+                disabled={saving}
+                {...form.getInputProps('sheet_name')}
+              />
+              {isEdit && channel?.has_google_credentials && (
+                <Alert icon={<ShieldCheck size={16} />} color="green" variant="light" py={6}>
+                  A service account key is already configured for this channel.
+                </Alert>
+              )}
+              <Textarea
+                label={isEdit ? 'Google Service Account Key (optional)' : 'Google Service Account Key'}
+                placeholder='{"client_email": "...", "private_key": "...", ...}'
+                description={
+                  isEdit
+                    ? "Paste a new key to replace the one on file, or leave blank to keep it. Stored encrypted — you won't be able to view it again after saving."
+                    : "Paste the full contents of the service account's downloaded JSON key file. Stored encrypted — you won't be able to view it again after saving. Share the sheet (Editor access) with this account's client_email."
+                }
+                autosize
+                minRows={3}
+                maxRows={8}
+                disabled={saving}
+                {...form.getInputProps('google_service_account_json')}
+              />
+            </>
           )}
           {isWebhook && (
             <div>

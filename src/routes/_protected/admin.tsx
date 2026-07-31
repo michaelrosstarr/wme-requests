@@ -1,19 +1,33 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Alert, Button, Card, Container, Group, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
+import { Alert, Badge, Button, Card, Container, Group, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { Info, Pencil, Plus, Send, Trash2 } from 'lucide-react'
-import { useChannels, useCountries, useDeleteChannel, useDeleteCountry, useTestChannel } from '@/lib/queries'
+import { Globe, Info, KeyRound, Mail, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
+import {
+  useChannels,
+  useCountries,
+  useDeleteChannel,
+  useDeleteCountry,
+  useMe,
+  useResetUserPassword,
+  useTestChannel,
+  useUsers,
+} from '@/lib/queries'
 import { EventTypeBadge, PlatformBadge } from '@/lib/labels'
-import type { Channel, Country } from '@/lib/types'
+import type { AdminUser, Channel, Country } from '@/lib/types'
 import CountryFormModal from '@/components/CountryFormModal'
 import ChannelFormModal from '@/components/ChannelFormModal'
+import UserFormModal from '@/components/UserFormModal'
+import InviteUserModal from '@/components/InviteUserModal'
+import UserAccessModal from '@/components/UserAccessModal'
 
 export const Route = createFileRoute('/_protected/admin')({ component: Admin })
 
 function Admin() {
+  const me = useMe().data
   const countriesQuery = useCountries()
   const countries = countriesQuery.data ?? []
+  const countryLabel = (id: number) => countries.find((c) => c.id === id)?.code ?? `#${id}`
 
   const [countryModal, setCountryModal] = useState<{ opened: boolean; country: Country | null }>({
     opened: false,
@@ -29,6 +43,16 @@ function Admin() {
   const deleteCountry = useDeleteCountry()
   const deleteChannel = useDeleteChannel()
   const testChannel = useTestChannel()
+
+  const usersQuery = useUsers()
+  const users = usersQuery.data ?? []
+  const [userModal, setUserModal] = useState(false)
+  const [inviteModal, setInviteModal] = useState(false)
+  const [accessModal, setAccessModal] = useState<{ opened: boolean; user: AdminUser | null }>({
+    opened: false,
+    user: null,
+  })
+  const resetUserPassword = useResetUserPassword()
 
   function handleDeleteCountry(id: number) {
     if (!confirm('Delete this country and all its channels and requests?')) return
@@ -68,15 +92,25 @@ function Admin() {
     })
   }
 
+  function handleResetPassword(id: string, email: string) {
+    if (!confirm(`Send a password reset email to ${email}?`)) return
+    resetUserPassword.mutate(id, {
+      onSuccess: () => notifications.show({ color: 'green', message: `Reset email sent to ${email}.` }),
+      onError: (e) => notifications.show({ color: 'red', title: 'Reset failed', message: (e as Error).message }),
+    })
+  }
+
   return (
     <Container size="xl" pb="xl">
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card withBorder radius="md" p="md">
           <Group justify="space-between" mb="sm">
             <Title order={4}>Countries</Title>
-            <Button size="xs" leftSection={<Plus size={14} />} onClick={() => setCountryModal({ opened: true, country: null })}>
-              Add
-            </Button>
+            {me?.isGlobal && (
+              <Button size="xs" leftSection={<Plus size={14} />} onClick={() => setCountryModal({ opened: true, country: null })}>
+                Add
+              </Button>
+            )}
           </Group>
           <Stack gap="xs">
             {countriesQuery.isLoading && <Text c="dimmed">Loading…</Text>}
@@ -231,6 +265,75 @@ function Admin() {
         </Card>
       </SimpleGrid>
 
+      {me?.isGlobal && (
+        <Card withBorder radius="md" p="md" mt="md">
+          <Group justify="space-between" mb="sm">
+            <Title order={4}>Users</Title>
+            <Group gap="xs">
+              <Button size="xs" variant="light" leftSection={<Mail size={14} />} onClick={() => setInviteModal(true)}>
+                Invite
+              </Button>
+              <Button size="xs" leftSection={<UserPlus size={14} />} onClick={() => setUserModal(true)}>
+                Create
+              </Button>
+            </Group>
+          </Group>
+          <Stack gap="xs">
+            {usersQuery.isLoading && <Text c="dimmed">Loading…</Text>}
+            {!usersQuery.isLoading && !users.length && <Text c="dimmed">No users yet.</Text>}
+            {users.map((u) => (
+              <Card key={u.id} withBorder radius="sm" p="xs">
+                <Group justify="space-between">
+                  <div>
+                    <Group gap={6}>
+                      <Text fw={600}>{u.name}</Text>
+                      {!u.hasPassword && (
+                        <Badge size="xs" color="yellow" variant="light">
+                          Invite pending
+                        </Badge>
+                      )}
+                      {u.isGlobal ? (
+                        <Badge size="xs" color="blue" variant="light" leftSection={<Globe size={10} />}>
+                          Global
+                        </Badge>
+                      ) : (
+                        <Badge size="xs" color="gray" variant="light">
+                          {u.countryIds.length
+                            ? u.countryIds.map(countryLabel).join(', ')
+                            : 'No countries assigned'}
+                        </Badge>
+                      )}
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      {u.email}
+                    </Text>
+                  </div>
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<Pencil size={14} />}
+                      onClick={() => setAccessModal({ opened: true, user: u })}
+                    >
+                      Edit Access
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<KeyRound size={14} />}
+                      loading={resetUserPassword.isPending && resetUserPassword.variables === u.id}
+                      onClick={() => handleResetPassword(u.id, u.email)}
+                    >
+                      Reset Password
+                    </Button>
+                  </Group>
+                </Group>
+              </Card>
+            ))}
+          </Stack>
+        </Card>
+      )}
+
       <CountryFormModal
         opened={countryModal.opened}
         country={countryModal.country}
@@ -244,6 +347,13 @@ function Admin() {
           onClose={() => setChannelModal({ opened: false, channel: null })}
         />
       )}
+      <UserFormModal opened={userModal} onClose={() => setUserModal(false)} />
+      <InviteUserModal opened={inviteModal} onClose={() => setInviteModal(false)} />
+      <UserAccessModal
+        opened={accessModal.opened}
+        user={accessModal.user}
+        onClose={() => setAccessModal({ opened: false, user: null })}
+      />
     </Container>
   )
 }

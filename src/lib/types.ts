@@ -1,6 +1,6 @@
 export type RequestType = 'downlock' | 'imagery'
 export type Status = 'pending' | 'in_progress' | 'completed' | 'rejected'
-export type Platform = 'slack' | 'discord' | 'telegram' | 'email' | 'webhook'
+export type Platform = 'slack' | 'discord' | 'telegram' | 'email' | 'webhook' | 'google_sheets'
 export type EventType = 'global' | 'downlock' | 'imagery'
 
 export interface Country {
@@ -21,6 +21,10 @@ export interface Channel {
   chat_id: string | null
   custom_prefix: string | null
   email_to: string | null
+  discord_forum: number
+  spreadsheet_id: string | null
+  sheet_name: string | null
+  has_google_credentials: boolean
 }
 
 export interface RequestItem {
@@ -37,6 +41,7 @@ export interface RequestItem {
   updated_at: string
   country_name: string
   country_code: string
+  screenshot_key: string | null
 }
 
 export interface RequestsResponse {
@@ -44,6 +49,23 @@ export interface RequestsResponse {
   limit: number
   offset: number
   data: RequestItem[]
+}
+
+export interface AdminUser {
+  id: string
+  name: string
+  email: string
+  emailVerified: number
+  createdAt: string
+  hasPassword: number
+  isGlobal: number
+  countryIds: number[]
+}
+
+export interface Me {
+  userId: string
+  isGlobal: boolean
+  countryIds: number[]
 }
 
 export interface UserReportRow {

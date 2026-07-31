@@ -5,7 +5,7 @@ import { getUserReport } from '@/lib/reports'
 export const Route = createFileRoute('/api/reports/by-user')({
   server: {
     handlers: apiRoute({
-      GET: () => getUserReport(),
+      GET: ({ access }) => getUserReport(access!),
     }),
   },
 })

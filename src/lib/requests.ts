@@ -2,6 +2,7 @@ import { waitUntil } from 'cloudflare:workers'
 import { dbAll, dbFirst, dbRun, REQUEST_TYPES, STATUSES, type RequestType, type Status } from './db'
 import { json, err } from './http'
 import { fireNotifications, type RequestRow } from './notifications'
+import { canAccessCountry, countryScopeSQL, type UserAccess } from './access'
 
 interface RequestWithCountry extends RequestRow {
   status: Status
@@ -11,7 +12,7 @@ interface RequestWithCountry extends RequestRow {
   updated_at: string
 }
 
-export async function getRequests(searchParams: URLSearchParams) {
+export async function getRequests(access: UserAccess, searchParams: URLSearchParams) {
   const conditions: string[] = []
   const params: unknown[] = []
 
@@ -31,6 +32,11 @@ export async function getRequests(searchParams: URLSearchParams) {
     conditions.push('r.status = ?')
     params.push(status)
   }
+  const scope = countryScopeSQL(access, 'r')
+  if (scope) {
+    conditions.push(scope.clause)
+    params.push(...scope.params)
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   const limit = Math.min(parseInt(searchParams.get('limit') || '') || 50, 200)
@@ -46,13 +52,14 @@ export async function getRequests(searchParams: URLSearchParams) {
   return json({ total: totalRow!.count, limit, offset, data: rows })
 }
 
-export async function getRequest(id: number) {
+export async function getRequest(access: UserAccess, id: number) {
   const row = await dbFirst<RequestWithCountry>(
     `SELECT r.*, c.name AS country_name, c.code AS country_code
      FROM requests r JOIN countries c ON c.id = r.country_id WHERE r.id = ?`,
     [id],
   )
   if (!row) return err('Request not found', 404)
+  if (!canAccessCountry(access, row.country_id)) return err('Request not found', 404)
   return json(row)
 }
 
@@ -64,10 +71,13 @@ interface CreateRequestBody {
   editor_rank?: number | null
   notes?: string | null
   submitted_by?: string | null
+  // Key of a screenshot already uploaded via POST /api/screenshots — attached at creation
+  // time (rather than via a follow-up call) so it's present when notifications fire.
+  screenshot_key?: string | null
 }
 
 export async function createRequest(body: CreateRequestBody) {
-  const { country_id, type, permalink, lock_level, editor_rank, notes, submitted_by } = body
+  const { country_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key } = body
 
   if (!country_id || !Number.isInteger(Number(country_id))) return err('country_id is required')
   if (!type || !REQUEST_TYPES.includes(type)) return err(`type must be one of: ${REQUEST_TYPES.join(', ')}`)
@@ -86,8 +96,8 @@ export async function createRequest(body: CreateRequestBody) {
   const effectiveLock = type === 'downlock' ? (lock_level ?? null) : null
 
   const result = await dbRun(
-    `INSERT INTO requests (country_id, type, permalink, lock_level, editor_rank, notes, submitted_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO requests (country_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Number(country_id),
       type,
@@ -96,6 +106,7 @@ export async function createRequest(body: CreateRequestBody) {
       editor_rank ?? null,
       notes || null,
       submitted_by?.trim() || null,
+      screenshot_key?.trim() || null,
     ],
   )
 
@@ -111,9 +122,14 @@ export async function createRequest(body: CreateRequestBody) {
   return json(row, 201)
 }
 
-export async function updateRequest(id: number, body: { status?: Status; notes?: string | null }) {
+export async function updateRequest(
+  access: UserAccess,
+  id: number,
+  body: { status?: Status; notes?: string | null },
+) {
   const existing = await dbFirst<RequestWithCountry>('SELECT * FROM requests WHERE id = ?', [id])
   if (!existing) return err('Request not found', 404)
+  if (!canAccessCountry(access, existing.country_id)) return err('Request not found', 404)
 
   const status = body.status && STATUSES.includes(body.status) ? body.status : existing.status
   const notes = body.notes !== undefined ? body.notes : existing.notes
@@ -130,7 +146,10 @@ export async function updateRequest(id: number, body: { status?: Status; notes?:
   return json(row)
 }
 
-export async function deleteRequest(id: number) {
+export async function deleteRequest(access: UserAccess, id: number) {
+  const existing = await dbFirst<RequestWithCountry>('SELECT * FROM requests WHERE id = ?', [id])
+  if (!existing) return err('Request not found', 404)
+  if (!canAccessCountry(access, existing.country_id)) return err('Request not found', 404)
   const result = await dbRun('DELETE FROM requests WHERE id = ?', [id])
   if (!result.meta.changes) return err('Request not found', 404)
   return new Response(null, { status: 204 })

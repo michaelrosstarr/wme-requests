@@ -5,7 +5,7 @@ import { testChannel } from '@/lib/channels'
 export const Route = createFileRoute('/api/channels/$id/test')({
   server: {
     handlers: apiRoute({
-      POST: ({ params }) => testChannel(parseInt(params.id)),
+      POST: ({ params, access }) => testChannel(access!, parseInt(params.id)),
     }),
   },
 })

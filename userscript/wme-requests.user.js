@@ -12,6 +12,7 @@
 // @grant        GM_getValue
 // @grant        GM_info
 // @grant        unsafeWindow
+// @license MIT
 // @connect      *
 // ==/UserScript==
 
@@ -351,6 +352,8 @@
           <label>Notes (optional)</label>
           <textarea id="wmereq-notes" placeholder="Any extra context…"></textarea>
 
+          ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-btn-screenshot" style="width:100%;box-sizing:border-box;margin-bottom:8px">📷 Attach Screenshot</button>` : ''}
+
           <button class="wmereq-btn wmereq-btn-downlock" id="wmereq-btn-submit-downlock">Submit Downlock</button>
           <button class="wmereq-btn wmereq-btn-imagery"  id="wmereq-btn-submit-imagery">Submit Imagery</button>
 
@@ -366,6 +369,77 @@
     on('wmereq-btn-submit-downlock', 'click', () => submitRequest('downlock'));
     on('wmereq-btn-submit-imagery', 'click', () => submitRequest('imagery'));
     on('wmereq-btn-settings', 'click', openSettings);
+    on('wmereq-btn-screenshot', 'click', handleScreenshotButtonClick);
+  }
+
+  // ── Viewport screenshot (optional, Chrome-only) ───────────────────────────────
+  // Uses the Element Capture API (RestrictionTarget) to crop a getDisplayMedia
+  // stream down to just the map viewport element. This is a very new, Chrome-only
+  // API — screenshotCaptureSupported() gates the button so unsupported browsers
+  // (Firefox, Safari, older Chrome) simply don't see the option.
+  let capturedScreenshotBlob = null;
+
+  function screenshotCaptureSupported() {
+    return typeof RestrictionTarget !== 'undefined' &&
+      typeof ImageCapture !== 'undefined' &&
+      !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  }
+
+  // Triggers the browser's native "Choose what to share" picker (unavoidable —
+  // there's no way to capture the screen without it), restricts the resulting
+  // stream to the map viewport element, grabs a single frame, and stops the
+  // stream immediately so the browser's "sharing" indicator goes away right away.
+  async function captureViewportScreenshot() {
+    const viewportEl = sdk.Map.getMapViewportElement();
+    if (!viewportEl) throw new Error('Could not find the map viewport element.');
+
+    const stream = await navigator.mediaDevices.getDisplayMedia({ preferCurrentTab: true });
+    const [track] = stream.getVideoTracks();
+    try {
+      const restrictionTarget = await RestrictionTarget.fromElement(viewportEl);
+      await track.restrictTo(restrictionTarget);
+
+      // Give the restricted track a moment to start delivering viewport-cropped
+      // frames before grabbing one — the first frame or two can still be uncropped.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const imgCap = new ImageCapture(track);
+      const imageBitmap = await imgCap.grabFrame();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = imageBitmap.width;
+      canvas.height = imageBitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Failed to get canvas context.');
+      ctx.drawImage(imageBitmap, 0, 0);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('Failed to create an image from the canvas.');
+      return blob;
+    } finally {
+      stream.getTracks().forEach((t) => t.stop());
+    }
+  }
+
+  function updateScreenshotButton() {
+    const btn = byId('wmereq-btn-screenshot');
+    if (!btn) return;
+    btn.textContent = capturedScreenshotBlob ? '📷 Screenshot attached ✓ (click to retake)' : '📷 Attach Screenshot';
+  }
+
+  async function handleScreenshotButtonClick() {
+    const btn = byId('wmereq-btn-screenshot');
+    if (btn) { btn.disabled = true; btn.textContent = 'Capturing…'; }
+    try {
+      capturedScreenshotBlob = await captureViewportScreenshot();
+    } catch (e) {
+      log('Screenshot capture failed: ' + e.message);
+      showStatus(`Screenshot capture failed: ${e.message}`, 'error');
+      capturedScreenshotBlob = null;
+    } finally {
+      if (btn) btn.disabled = false;
+      updateScreenshotButton();
+    }
   }
 
   // ── Selection helpers ─────────────────────────────────────────────────────────
@@ -569,7 +643,16 @@
   }
 
   // ── Downlock reason modal ─────────────────────────────────────────────────────
-  const DOWNLOCK_REASONS = ['Adjust SL', 'Add SB', 'Fix Geometry', 'Add Junction', 'House Numbers', 'Turn Restrictions'];
+  const DOWNLOCK_REASONS = ['Adjust SL', 'Add SB', 'Fix Geo', 'Add JB', 'HN', 'TR'];
+  // Full wording shown as a tooltip on each chip — check these match your team's shorthand.
+  const DOWNLOCK_REASON_TOOLTIPS = {
+    'Adjust SL': 'Adjust Speed Limit',
+    'Add SB': 'Add Speed Bump',
+    'Fix Geo': 'Fix Geometry',
+    'Add JB': 'Add Junction Box',
+    HN: 'House Numbers',
+    TR: 'Turn Restrictions',
+  };
 
   // Shows quick-pick reason chips plus a free-text field. Resolves
   // { confirmed: false } if cancelled, or { confirmed: true, reason } otherwise
@@ -584,7 +667,7 @@
           <h4>Downlock Reason</h4>
           <div class="wmereq-hint">Select one or more quick reasons, or add your own below.</div>
           <div class="wmereq-reason-chips">
-            ${DOWNLOCK_REASONS.map((r) => `<button type="button" class="wmereq-chip" data-reason="${escHtml(r)}">${escHtml(r)}</button>`).join('')}
+            ${DOWNLOCK_REASONS.map((r) => `<button type="button" class="wmereq-chip" data-reason="${escHtml(r)}" title="${escHtml(DOWNLOCK_REASON_TOOLTIPS[r] || r)}">${escHtml(r)}</button>`).join('')}
           </div>
           <label>Additional details (optional)</label>
           <textarea id="wmereq-reason-custom" placeholder="Any extra context…"></textarea>
@@ -684,6 +767,18 @@
       ...(type === 'downlock' && lockLevel ? { lock_level: parseInt(lockLevel) } : {}),
     };
 
+    // Uploaded (if any) before creating the request, and its key attached to the create
+    // body — not as a follow-up call — so it's already present when notifications fire.
+    if (capturedScreenshotBlob) {
+      status('Uploading screenshot…', 'info');
+      try {
+        const upload = await apiPostBlob('/screenshots', capturedScreenshotBlob);
+        body.screenshot_key = upload.key;
+      } catch (e) {
+        log('Screenshot upload failed, continuing without it: ' + e.message);
+      }
+    }
+
     log(`doSubmit: request body = ${JSON.stringify(body)}`);
 
     status('Submitting…', 'info');
@@ -692,6 +787,8 @@
     try {
       const result = await apiPost('/requests', body);
       status(`Request #${result.id} submitted successfully.`, 'ok');
+      capturedScreenshotBlob = null;
+      updateScreenshotButton();
       clearForm();
     } catch (e) {
       status(`Error: ${e.message}`, 'error');
@@ -775,6 +872,26 @@
         url: `${apiBase}/api${path}`,
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify(body),
+        onload: (res) => {
+          try {
+            const data = JSON.parse(res.responseText);
+            res.status >= 400 ? reject(new Error(data.error || 'API error')) : resolve(data);
+          } catch (e) { reject(e); }
+        },
+        onerror: (e) => reject(new Error('Network error: ' + (e.error || ''))),
+      });
+    });
+  }
+
+  // Uploads a captured screenshot Blob as the raw request body (not JSON) — GM_xmlhttpRequest
+  // accepts a Blob directly for `data`, same as fetch's body would.
+  function apiPostBlob(path, blob) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${apiBase}/api${path}`,
+        headers: { 'Content-Type': blob.type || 'image/png' },
+        data: blob,
         onload: (res) => {
           try {
             const data = JSON.parse(res.responseText);

@@ -17,7 +17,7 @@ export async function dbRun(sql: string, params: unknown[] = []) {
   return getDb().prepare(sql).bind(...params).run()
 }
 
-export const PLATFORMS = ['slack', 'discord', 'telegram', 'email', 'webhook'] as const
+export const PLATFORMS = ['slack', 'discord', 'telegram', 'email', 'webhook', 'google_sheets'] as const
 export const EVENT_TYPES = ['global', 'downlock', 'imagery'] as const
 export const REQUEST_TYPES = ['downlock', 'imagery'] as const
 export const STATUSES = ['pending', 'in_progress', 'completed', 'rejected'] as const

@@ -1,17 +1,24 @@
-import { env } from 'cloudflare:workers'
 import { dbAll } from './db'
+import { sendPostmarkEmail } from './postmark'
+import { appendSheetRow, type GoogleServiceAccount } from './google-sheets'
+import { screenshotUrl } from './screenshots'
+import { decryptSecret } from './crypto'
 
 export interface NotificationChannel {
   id: number
   country_id: number
   label: string
-  platform: 'slack' | 'discord' | 'telegram' | 'email' | 'webhook'
+  platform: 'slack' | 'discord' | 'telegram' | 'email' | 'webhook' | 'google_sheets'
   event_type: 'global' | 'downlock' | 'imagery'
   webhook_url: string | null
   bot_token: string | null
   chat_id: string | null
   custom_prefix: string | null
   email_to: string | null
+  discord_forum: number
+  spreadsheet_id: string | null
+  sheet_name: string | null
+  google_credentials_encrypted: string | null
 }
 
 export interface RequestRow {
@@ -23,6 +30,7 @@ export interface RequestRow {
   editor_rank: number | null
   notes: string | null
   submitted_by: string | null
+  screenshot_key: string | null
 }
 
 function userProfileUrl(username: string) {
@@ -48,6 +56,7 @@ function buildMessage(request: RequestRow, countryName: string) {
     notes: request.notes,
     submittedBy: request.submitted_by,
     editorRank: request.editor_rank,
+    screenshotUrl: screenshotUrl(request.screenshot_key),
   }
 }
 
@@ -87,6 +96,9 @@ async function sendSlack(webhookUrl: string, msg: ReturnType<typeof buildMessage
   if (msg.notes) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Notes:*\n${msg.notes}` } })
   }
+  if (msg.screenshotUrl) {
+    blocks.push({ type: 'image', image_url: msg.screenshotUrl, alt_text: 'Map viewport screenshot' })
+  }
 
   await fetch(webhookUrl, {
     method: 'POST',
@@ -100,7 +112,14 @@ async function sendSlack(webhookUrl: string, msg: ReturnType<typeof buildMessage
   })
 }
 
-async function sendDiscord(webhookUrl: string, msg: ReturnType<typeof buildMessage>, prefix: string | null) {
+// Forum channels have no general message stream — every webhook post must create a new
+// post (thread) via `thread_name`, capped at Discord's 100-character thread name limit.
+async function sendDiscord(
+  webhookUrl: string,
+  msg: ReturnType<typeof buildMessage>,
+  prefix: string | null,
+  isForumThread: boolean,
+) {
   const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
   const lines = bodyLines(msg)
   if (msg.submittedBy) lines.push(`Submitted by: [${msg.submittedBy}](${userProfileUrl(msg.submittedBy)})${rankSuffix}`)
@@ -109,7 +128,16 @@ async function sendDiscord(webhookUrl: string, msg: ReturnType<typeof buildMessa
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       content: prefix || undefined,
-      embeds: [{ title: msg.title, description: lines.join('\n'), color: msg.color, timestamp: new Date().toISOString() }],
+      embeds: [
+        {
+          title: msg.title,
+          description: lines.join('\n'),
+          color: msg.color,
+          timestamp: new Date().toISOString(),
+          ...(msg.screenshotUrl ? { image: { url: msg.screenshotUrl } } : {}),
+        },
+      ],
+      ...(isForumThread ? { thread_name: (prefix || msg.title).slice(0, 100) } : {}),
     }),
   })
 }
@@ -134,6 +162,19 @@ async function sendTelegram(botToken: string, chatId: string, msg: ReturnType<ty
     )
   }
   const text = `*${escapeMarkdown(msg.title)}*\n${prefixLine}${lines.join('\n')}`
+
+  // sendPhoto's caption is capped at 1024 chars (vs sendMessage's 4096) — unlikely to
+  // matter for these short messages, but if it's ever exceeded Telegram rejects the
+  // whole request rather than truncating, so this isn't silently lossy.
+  if (msg.screenshotUrl) {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, photo: msg.screenshotUrl, caption: text, parse_mode: 'MarkdownV2' }),
+    })
+    return
+  }
+
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -157,35 +198,25 @@ function buildEmailHtml(msg: ReturnType<typeof buildMessage>, prefix: string | n
       ? `<p><strong>Submitted by:</strong> <a href="${escapeHtml(userProfileUrl(msg.submittedBy))}">${escapeHtml(msg.submittedBy)}</a>${escapeHtml(rankSuffix)}</p>`
       : '',
     msg.notes ? `<p><strong>Notes:</strong><br>${escapeHtml(msg.notes).replaceAll('\n', '<br>')}</p>` : '',
+    msg.screenshotUrl
+      ? `<p><img src="${escapeHtml(msg.screenshotUrl)}" alt="Map viewport screenshot" style="max-width:100%"></p>`
+      : '',
   ]
   return parts.filter(Boolean).join('\n')
 }
 
-// Sent via Postmark's single-email API (https://postmarkapp.com/developer/api/email-api).
-// POSTMARK_FROM_EMAIL must be a verified Sender Signature/domain in the Postmark account;
-// POSTMARK_SERVER_TOKEN is the Server API Token, set as a Worker secret (never in wrangler.jsonc).
 async function sendEmail(msg: ReturnType<typeof buildMessage>, prefix: string | null, toEmail: string) {
   const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
   const lines = bodyLines(msg)
   if (msg.submittedBy) lines.push(`Submitted by: ${msg.submittedBy}${rankSuffix} — ${userProfileUrl(msg.submittedBy)}`)
   const subject = prefix ? `[${prefix}] ${msg.title}` : msg.title
 
-  const res = await fetch('https://api.postmarkapp.com/email', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'X-Postmark-Server-Token': env.POSTMARK_SERVER_TOKEN,
-    },
-    body: JSON.stringify({
-      From: env.POSTMARK_FROM_EMAIL,
-      To: toEmail,
-      Subject: subject,
-      TextBody: lines.join('\n'),
-      HtmlBody: buildEmailHtml(msg, prefix),
-    }),
+  await sendPostmarkEmail({
+    to: toEmail,
+    subject,
+    textBody: lines.join('\n'),
+    htmlBody: buildEmailHtml(msg, prefix),
   })
-  if (!res.ok) throw new Error(`Postmark error ${res.status}: ${await res.text()}`)
 }
 
 // Plain structured JSON for arbitrary custom integrations — no platform-specific
@@ -203,19 +234,45 @@ async function sendWebhook(webhookUrl: string, msg: ReturnType<typeof buildMessa
       submitted_by: msg.submittedBy,
       submitted_by_url: msg.submittedBy ? userProfileUrl(msg.submittedBy) : null,
       editor_rank: msg.editorRank,
+      screenshot_url: msg.screenshotUrl,
     }),
   })
+}
+
+async function sendGoogleSheet(
+  channel: NotificationChannel,
+  msg: ReturnType<typeof buildMessage>,
+  vars: PrefixVars,
+) {
+  if (!channel.spreadsheet_id) return
+  if (!channel.google_credentials_encrypted) throw new Error('No Google service account configured for this channel')
+  const credentials = JSON.parse(await decryptSecret(channel.google_credentials_encrypted)) as GoogleServiceAccount
+
+  await appendSheetRow(credentials, channel.spreadsheet_id, channel.sheet_name, [
+    new Date().toISOString(),
+    vars.type,
+    vars.country_name,
+    vars.country_code,
+    msg.permalink,
+    msg.lockLevel ?? '',
+    msg.editorRank ?? '',
+    msg.notes ?? '',
+    msg.submittedBy ?? '',
+    msg.screenshotUrl ?? '',
+  ])
 }
 
 async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typeof buildMessage>, vars: PrefixVars) {
   try {
     const prefix = channel.custom_prefix ? applyPrefixTemplate(channel.custom_prefix, vars) : null
     if (channel.platform === 'slack' && channel.webhook_url) await sendSlack(channel.webhook_url, msg, prefix)
-    if (channel.platform === 'discord' && channel.webhook_url) await sendDiscord(channel.webhook_url, msg, prefix)
+    if (channel.platform === 'discord' && channel.webhook_url)
+      await sendDiscord(channel.webhook_url, msg, prefix, !!channel.discord_forum)
     if (channel.platform === 'telegram' && channel.bot_token && channel.chat_id)
       await sendTelegram(channel.bot_token, channel.chat_id, msg, prefix)
     if (channel.platform === 'email' && channel.email_to) await sendEmail(msg, prefix, channel.email_to)
     if (channel.platform === 'webhook' && channel.webhook_url) await sendWebhook(channel.webhook_url, msg, prefix)
+    if (channel.platform === 'google_sheets') await sendGoogleSheet(channel, msg, vars)
     return { id: channel.id, ok: true }
   } catch (e) {
     return { id: channel.id, ok: false, error: (e as Error).message }
@@ -259,6 +316,7 @@ export async function sendTestMessage(channel: NotificationChannel, countryName:
       notes: `This is a test message from WME Requests, confirming the "${channel.label}" channel is configured correctly.`,
       submittedBy: null,
       editorRank: null,
+      screenshotUrl: null,
     },
     vars,
   )

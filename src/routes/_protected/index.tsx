@@ -17,7 +17,7 @@ import {
   Title,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { Trash2 } from 'lucide-react'
+import { Camera, Trash2 } from 'lucide-react'
 import { useCountries, useDeleteRequest, useDeleteRequests, useRequestStats, useRequests } from '@/lib/queries'
 import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
 
@@ -230,9 +230,25 @@ function Dashboard() {
                   <Table.Td>{r.lock_level ?? '—'}</Table.Td>
                   <Table.Td>{r.editor_rank ?? '—'}</Table.Td>
                   <Table.Td>
-                    <Anchor href={r.permalink} target="_blank" rel="noopener" size="sm">
-                      Open ↗
-                    </Anchor>
+                    <Group gap={6} wrap="nowrap">
+                      <Anchor href={r.permalink} target="_blank" rel="noopener" size="sm">
+                        Open ↗
+                      </Anchor>
+                      {r.screenshot_key && (
+                        <ActionIcon
+                          component="a"
+                          href={`/api/screenshots/${r.screenshot_key}`}
+                          target="_blank"
+                          rel="noopener"
+                          variant="light"
+                          size="sm"
+                          aria-label="View screenshot"
+                          title="View screenshot"
+                        >
+                          <Camera size={14} />
+                        </ActionIcon>
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>{r.submitted_by || '—'}</Table.Td>
                   <Table.Td>{r.notes || '—'}</Table.Td>

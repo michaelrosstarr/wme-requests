@@ -1,5 +1,5 @@
 import { Badge } from '@mantine/core'
-import { Globe, Image, Lock, MessageSquare, Send, Gamepad2, Mail, Webhook } from 'lucide-react'
+import { Globe, Image, Lock, MessageSquare, Send, Gamepad2, Mail, Webhook, FileSpreadsheet } from 'lucide-react'
 import type { EventType, Platform, RequestType, Status } from './types'
 
 export function TypeBadge({ type }: Readonly<{ type: RequestType }>) {
@@ -47,6 +47,7 @@ const PLATFORM_ICONS: Record<Platform, typeof MessageSquare> = {
   telegram: Send,
   email: Mail,
   webhook: Webhook,
+  google_sheets: FileSpreadsheet,
 }
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -55,6 +56,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   telegram: 'Telegram',
   email: 'Email',
   webhook: 'Webhook',
+  google_sheets: 'Google Sheet',
 }
 
 export function PlatformBadge({ platform }: Readonly<{ platform: Platform }>) {

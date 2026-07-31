@@ -20,11 +20,14 @@
 		// caller of the public POST /api/requests endpoint — everything else (the dashboard)
 		// is same-origin and unaffected by this. Includes both waze.com and www.waze.com
 		// since Waze's own generated links use the bare domain while the app may serve under www.
-		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com",
+		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wazetools.com",
 		// The "From" address for email notifications sent via Postmark — must be a verified
 		// Sender Signature (or a domain you've verified) in your Postmark account.
 		// The Postmark Server API Token itself is a secret, not a var — see DEPLOYMENT.md.
-		"POSTMARK_FROM_EMAIL": "notifications@mail.wazetools.com"
+		"POSTMARK_FROM_EMAIL": "notifications@mail.wazetools.com",
+		// The dashboard's own deployed origin — required so invite/password-reset emails
+		// link to an absolute URL instead of a bare path.
+		"BETTER_AUTH_URL": "https://requests.wazetools.com"
 	},
 	"d1_databases": [
 		{
@@ -33,6 +36,13 @@
 			// Replace with the ID printed by: wrangler d1 create wme-requests
 			"database_id": "2af446ca-93ff-4681-ab5c-80edcd5098d0",
 			"remote": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "SCREENSHOTS",
+			// Replace with the name you passed to: wrangler r2 bucket create <name>
+			"bucket_name": "wme-requests-screenshots"
 		}
 	]
 }
