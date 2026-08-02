@@ -41,7 +41,7 @@ On supported Chromium browsers, attach a screenshot of the current map viewport 
 ## Usage
 
 1. Install the script and open WME — find the **WME Requests** tab in the sidebar (or the floating panel if the tab doesn't appear).
-2. Click **⚙ Settings** once and enter your community's backend URL.
+2. Click **Settings** once and enter your community's backend URL.
 3. Select a segment on the map. Lock level, country, and region (if configured) are filled in automatically.
 4. Adjust anything you need, add notes, optionally attach a screenshot, and submit — or use the floating **Downlock** / **Imagery** buttons for a one-click submit on the current selection.
 

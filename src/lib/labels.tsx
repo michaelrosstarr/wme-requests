@@ -1,5 +1,18 @@
-import { Badge } from '@mantine/core'
-import { Globe, Image, Lock, MessageSquare, Send, Gamepad2, Mail, Webhook, FileSpreadsheet } from 'lucide-react'
+import { Badge, Group, Text } from '@mantine/core'
+import {
+  Globe,
+  Image,
+  Lock,
+  MessageSquare,
+  MessageCircle,
+  Send,
+  Gamepad2,
+  Mail,
+  Webhook,
+  FileSpreadsheet,
+  Radio,
+  Server,
+} from 'lucide-react'
 import type { CredentialType, EventType, Platform, RequestType, Status } from './types'
 
 export function TypeBadge({ type }: Readonly<{ type: RequestType }>) {
@@ -43,28 +56,39 @@ export function StatusBadge({ status }: Readonly<{ status: Status }>) {
 
 const PLATFORM_ICONS: Record<Platform, typeof MessageSquare> = {
   slack: MessageSquare,
+  slack_threaded: MessageSquare,
   discord: Gamepad2,
   telegram: Send,
   email: Mail,
   webhook: Webhook,
   google_sheets: FileSpreadsheet,
+  google_chat: MessageCircle,
+  ntfy: Radio,
+  gotify: Server,
 }
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   slack: 'Slack',
+  slack_threaded: 'Slack (Threaded)',
   discord: 'Discord',
   telegram: 'Telegram',
   email: 'Email',
   webhook: 'Webhook',
   google_sheets: 'Google Sheet',
+  google_chat: 'Google Chat',
+  ntfy: 'ntfy',
+  gotify: 'Gotify',
 }
 
 export function PlatformBadge({ platform }: Readonly<{ platform: Platform }>) {
   const Icon = PLATFORM_ICONS[platform]
   return (
-    <Badge size="xs" variant="light" leftSection={<Icon size={11} />}>
-      {PLATFORM_LABELS[platform]}
-    </Badge>
+    <Group gap="xs" mb={4}>
+      <Icon size={14} />
+      <Text fw={600} size="sm">
+        {PLATFORM_LABELS[platform]}
+      </Text>
+    </Group>
   )
 }
 

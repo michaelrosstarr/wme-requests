@@ -27,7 +27,14 @@
 		"POSTMARK_FROM_EMAIL": "notifications@mail.wazetools.com",
 		// The dashboard's own deployed origin — required so invite/password-reset emails
 		// link to an absolute URL instead of a bare path.
-		"BETTER_AUTH_URL": "https://requests.wazetools.com"
+		"BETTER_AUTH_URL": "https://requests.wazetools.com",
+		// Web Push VAPID public key — safe to expose (it's sent to the browser as
+		// applicationServerKey). The matching private key is WEB_PUSH_VAPID_PRIVATE_JWK,
+		// a secret — see DEPLOYMENT.md. Placeholder; replace with your own generated pair.
+		"WEB_PUSH_VAPID_PUBLIC_KEY": "BI7TZK5g2JTEXxFtmOy3KiCWs1rLvNAzsCNOWK_l3mb_jiyZrAKAyZOsYNuu0zIFJQxUXYoHIlTxz8R7v6ZrfR4",
+		// Contact address required by the Web Push protocol (VAPID "sub" claim) so push
+		// services can reach you about problems with your usage.
+		"WEB_PUSH_CONTACT": "mailto:wazerequest@michaelrosstarr.com "
 	},
 	"d1_databases": [
 		{

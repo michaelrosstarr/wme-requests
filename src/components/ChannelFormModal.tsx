@@ -15,11 +15,15 @@ interface Props {
 
 const PLATFORM_OPTIONS = [
   { value: 'slack', label: 'Slack' },
+  { value: 'slack_threaded', label: 'Slack (Threaded)' },
   { value: 'discord', label: 'Discord' },
   { value: 'telegram', label: 'Telegram' },
   { value: 'email', label: 'Email' },
   { value: 'webhook', label: 'Webhook (generic JSON)' },
   { value: 'google_sheets', label: 'Google Sheet' },
+  { value: 'google_chat', label: 'Google Chat' },
+  { value: 'ntfy', label: 'ntfy' },
+  { value: 'gotify', label: 'Gotify' },
 ]
 
 const EVENT_TYPE_OPTIONS = [
@@ -61,11 +65,23 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
     validate: {
       label: (v) => (v.trim() ? null : 'Label is required'),
       webhook_url: (v, values) =>
-        (values.platform === 'slack' || values.platform === 'discord' || values.platform === 'webhook') && !v
-          ? 'Webhook URL is required'
+        (values.platform === 'slack' ||
+          values.platform === 'discord' ||
+          values.platform === 'webhook' ||
+          values.platform === 'google_chat' ||
+          values.platform === 'ntfy' ||
+          values.platform === 'gotify') &&
+        !v
+          ? 'URL is required'
           : null,
-      bot_token: (v, values) => (values.platform === 'telegram' && !v ? 'Bot token is required' : null),
-      chat_id: (v, values) => (values.platform === 'telegram' && !v ? 'Chat ID is required' : null),
+      bot_token: (v, values) => {
+        if (values.platform === 'telegram' && !v) return 'Bot token is required'
+        if (values.platform === 'slack_threaded' && !v) return 'Bot token is required'
+        if (values.platform === 'gotify' && !v) return 'Application token is required'
+        return null
+      },
+      chat_id: (v, values) =>
+        (values.platform === 'telegram' || values.platform === 'slack_threaded') && !v ? 'Channel ID is required' : null,
       email_to: (v, values) => (values.platform === 'email' && !v ? 'Recipient email is required' : null),
       spreadsheet_id: (v, values) =>
         values.platform === 'google_sheets' && !v ? 'Spreadsheet ID is required' : null,
@@ -102,15 +118,27 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
   }, [opened, channel])
 
   async function handleSubmit(values: ChannelFormValues) {
-    const usesWebhookUrl = values.platform === 'slack' || values.platform === 'discord' || values.platform === 'webhook'
+    const usesWebhookUrl =
+      values.platform === 'slack' ||
+      values.platform === 'discord' ||
+      values.platform === 'webhook' ||
+      values.platform === 'google_chat' ||
+      values.platform === 'ntfy' ||
+      values.platform === 'gotify'
+    const usesBotToken =
+      values.platform === 'telegram' ||
+      values.platform === 'slack_threaded' ||
+      values.platform === 'ntfy' ||
+      values.platform === 'gotify'
+    const usesChatId = values.platform === 'telegram' || values.platform === 'slack_threaded'
     const payload: ChannelFormValues = {
       label: values.label.trim(),
       platform: values.platform,
       event_type: values.event_type,
       region_id: values.region_id,
       webhook_url: usesWebhookUrl ? values.webhook_url?.trim() || null : null,
-      bot_token: values.platform === 'telegram' ? values.bot_token?.trim() || null : null,
-      chat_id: values.platform === 'telegram' ? values.chat_id?.trim() || null : null,
+      bot_token: usesBotToken ? values.bot_token?.trim() || null : null,
+      chat_id: usesChatId ? values.chat_id?.trim() || null : null,
       custom_prefix: values.custom_prefix?.trim() || null,
       email_to: values.platform === 'email' ? values.email_to?.trim() || null : null,
       discord_forum: values.platform === 'discord' ? values.discord_forum : false,
@@ -133,11 +161,25 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
 
   const platform = form.values.platform
   const isTelegram = platform === 'telegram'
+  const isSlackThreaded = platform === 'slack_threaded'
   const isEmail = platform === 'email'
   const isWebhook = platform === 'webhook'
   const isDiscord = platform === 'discord'
+  const isGoogleChat = platform === 'google_chat'
   const isGoogleSheets = platform === 'google_sheets'
-  const showWebhookUrl = platform === 'slack' || isDiscord || isWebhook
+  const isNtfy = platform === 'ntfy'
+  const isGotify = platform === 'gotify'
+  const showWebhookUrl = platform === 'slack' || isDiscord || isWebhook || isGoogleChat || isNtfy || isGotify
+  const webhookUrlLabel = isNtfy ? 'Topic URL' : isGotify ? 'Server URL' : 'Webhook URL'
+  const webhookUrlPlaceholder = isWebhook
+    ? 'https://your-service.example.com/hook'
+    : isGoogleChat
+      ? 'https://chat.googleapis.com/v1/spaces/…'
+      : isNtfy
+        ? 'https://ntfy.sh/your-topic'
+        : isGotify
+          ? 'https://gotify.example.com'
+          : 'https://hooks.slack.com/…'
   const saving = create.isPending || update.isPending
 
   return (
@@ -183,11 +225,28 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
             />
             {showWebhookUrl && (
               <TextInput
-                label="Webhook URL"
-                placeholder={isWebhook ? 'https://your-service.example.com/hook' : 'https://hooks.slack.com/…'}
+                label={webhookUrlLabel}
+                placeholder={webhookUrlPlaceholder}
                 description={isWebhook ? 'Receives a POST with a plain JSON body on every matching request.' : undefined}
                 disabled={saving}
                 {...form.getInputProps('webhook_url')}
+              />
+            )}
+            {isNtfy && (
+              <TextInput
+                label="Access Token (optional)"
+                placeholder="tk_…"
+                description="Only needed if the topic is protected — public topics don't require one."
+                disabled={saving}
+                {...form.getInputProps('bot_token')}
+              />
+            )}
+            {isGotify && (
+              <TextInput
+                label="Application Token"
+                placeholder="A…"
+                disabled={saving}
+                {...form.getInputProps('bot_token')}
               />
             )}
             {isDiscord && (
@@ -275,6 +334,29 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
                 <TextInput
                   label="Chat ID"
                   placeholder="-100123456789"
+                  disabled={saving}
+                  {...form.getInputProps('chat_id')}
+                />
+              </>
+            )}
+            {isSlackThreaded && (
+              <>
+                <Text size="xs" c="dimmed">
+                  Uses a Slack app's bot token instead of an incoming webhook, so consecutive requests from the
+                  same submitter on the same day can reply into one thread instead of posting separately. Needs a
+                  Slack app with the <Code>chat:write</Code> scope, installed to the workspace and invited to the
+                  channel.
+                </Text>
+                <TextInput
+                  label="Bot Token"
+                  placeholder="xoxb-…"
+                  disabled={saving}
+                  {...form.getInputProps('bot_token')}
+                />
+                <TextInput
+                  label="Channel ID"
+                  placeholder="C0123456789"
+                  description="The channel's ID (right-click the channel → View channel details), not its name."
                   disabled={saving}
                   {...form.getInputProps('chat_id')}
                 />

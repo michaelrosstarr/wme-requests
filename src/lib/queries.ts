@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import apiFetch from './api-client'
+import { subscribeToPush } from './push-client'
 import type {
   AdminUser,
   Channel,
@@ -7,6 +8,7 @@ import type {
   Credential,
   CredentialType,
   Me,
+  PushSubscription,
   Region,
   RequestsResponse,
   Status,
@@ -116,6 +118,19 @@ export function useDeleteRequests() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map((id) => apiFetch(`/requests/${id}`, { method: 'DELETE' }))),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['requests'] }),
+  })
+}
+
+export function useUpdateRequestsStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { ids: number[]; status: Status }) =>
+      Promise.all(
+        vars.ids.map((id) =>
+          apiFetch(`/requests/${id}`, { method: 'PUT', body: JSON.stringify({ status: vars.status }) }),
+        ),
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['requests'] }),
   })
 }
@@ -302,5 +317,29 @@ export function useUpdateUserAccess() {
         body: JSON.stringify({ isGlobal: vars.isGlobal, countryIds: vars.countryIds }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+export function useMySubscriptions(enabled: boolean) {
+  return useQuery({
+    queryKey: ['push-subscriptions'],
+    queryFn: () => apiFetch<PushSubscription[]>('/push/subscriptions'),
+    enabled,
+  })
+}
+
+export function useSubscribePush() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { countryId: string; regionId: string | null; eventType: string }) => subscribeToPush(vars),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['push-subscriptions'] }),
+  })
+}
+
+export function useUnsubscribePush() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiFetch(`/push/subscriptions/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['push-subscriptions'] }),
   })
 }

@@ -1,335 +1,210 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import {
-  ActionIcon,
-  Anchor,
-  Badge,
   Button,
-  Checkbox,
+  Card,
   Container,
   Group,
-  Pagination,
   Paper,
-  Select,
   SimpleGrid,
-  Table,
+  Skeleton,
+  Stack,
   Text,
   Title,
 } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { Camera, Trash2 } from 'lucide-react'
-import { useCountries, useDeleteRequest, useDeleteRequests, useRegions, useRequestStats, useRequests } from '@/lib/queries'
-import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
-import { authClient } from '@/lib/auth-client'
+import {
+  ArrowRight,
+  Bell,
+  FileSpreadsheet,
+  Gamepad2,
+  Globe2,
+  Image,
+  Lock,
+  Mail,
+  MapPinned,
+  MessageCircle,
+  MessageSquare,
+  Radio,
+  Rss,
+  Send,
+  ShieldCheck,
+  Webhook,
+  Server,
+} from 'lucide-react'
+import { useCountries } from '@/lib/queries'
+import 'flag-icons/css/flag-icons.min.css'
 
-export const Route = createFileRoute('/')({ component: Dashboard })
+// Codes people commonly use that don't match the ISO 3166-1 alpha-2 code flag-icons expects.
+const FLAG_ALIASES: Record<string, string> = { uk: 'gb' }
 
-const PAGE_SIZE = 50
-const TYPE_OPTIONS = [
-  { value: 'downlock', label: 'Downlock' },
-  { value: 'imagery', label: 'Imagery' },
-]
+function flagClass(code: string) {
+  const normalized = code.trim().toLowerCase()
+  if (!/^[a-z]{2}$/.test(normalized)) return null
+  return `fi fi-${FLAG_ALIASES[normalized] ?? normalized}`
+}
 
-function Dashboard() {
-  const { data: session } = authClient.useSession()
-  const canEdit = !!session
-  const [countryId, setCountryId] = useState<string | null>(null)
-  const [regionId, setRegionId] = useState<string | null>(null)
-  const [type, setType] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
-  const [appliedFilter, setAppliedFilter] = useState<{
-    countryId: string | null
-    regionId: string | null
-    type: string | null
-    status: string | null
-  }>({ countryId: null, regionId: null, type: null, status: null })
-  const [page, setPage] = useState(1)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-
-  const countriesQuery = useCountries()
-  const regionsQuery = useRegions(countryId)
-  const statsQuery = useRequestStats()
-  const requestsQuery = useRequests({
-    countryId: appliedFilter.countryId,
-    regionId: appliedFilter.regionId,
-    type: appliedFilter.type,
-    status: appliedFilter.status,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-  })
-  const deleteRequest = useDeleteRequest()
-  const deleteRequests = useDeleteRequests()
-
-  const countries = countriesQuery.data ?? []
-  const regions = regionsQuery.data ?? []
-  const data = requestsQuery.data
-  const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0
-  const allOnPageSelected = !!data?.data.length && data.data.every((r) => selectedIds.has(r.id))
-  const someOnPageSelected = !allOnPageSelected && data?.data.some((r) => selectedIds.has(r.id))
-
-  // Selection is page/filter-scoped — clear it whenever the visible rows change underneath it.
-  useEffect(() => {
-    setSelectedIds(new Set())
-  }, [page, appliedFilter])
-
-  function applyFilters() {
-    setPage(1)
-    setAppliedFilter({ countryId, regionId, type, status })
-  }
-
-  function handleCountryChange(value: string | null) {
-    setCountryId(value)
-    setRegionId(null)
-  }
-
-  function handleDelete(id: number) {
-    if (!confirm('Delete this request?')) return
-    deleteRequest.mutate(id, {
-      onError: (e) => notifications.show({ color: 'red', title: 'Failed to delete', message: (e as Error).message }),
-    })
-  }
-
-  function toggleSelect(id: number) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function toggleSelectAll() {
-    if (!data) return
-    setSelectedIds(allOnPageSelected ? new Set() : new Set(data.data.map((r) => r.id)))
-  }
-
-  function handleBulkDelete() {
-    if (!selectedIds.size) return
-    if (!confirm(`Delete ${selectedIds.size} selected request${selectedIds.size !== 1 ? 's' : ''}?`)) return
-    deleteRequests.mutate([...selectedIds], {
-      onSuccess: () => setSelectedIds(new Set()),
-      onError: (e) => notifications.show({ color: 'red', title: 'Failed to delete', message: (e as Error).message }),
-    })
-  }
-
+function CountryFlag({ code }: Readonly<{ code: string }>) {
+  const cls = flagClass(code)
   return (
-    <Container size="xl" pb="xl">
-      <Paper withBorder p="md" radius="md" mb="md">
-        <Title order={4} mb="sm">
-          Filters
-        </Title>
-        <Group align="flex-end">
-          <Select
-            label="Country"
-            placeholder="All countries"
-            clearable
-            data={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` }))}
-            value={countryId}
-            onChange={handleCountryChange}
-          />
-          <Select
-            label="Region"
-            placeholder={countryId ? 'All regions' : 'Select a country first'}
-            clearable
-            disabled={!countryId}
-            data={regions.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
-            value={regionId}
-            onChange={setRegionId}
-          />
-          <Select label="Type" placeholder="All types" clearable data={TYPE_OPTIONS} value={type} onChange={setType} />
-          <Select
-            label="Status"
-            placeholder="All statuses"
-            clearable
-            data={STATUS_OPTIONS}
-            value={status}
-            onChange={setStatus}
-          />
-          <Button onClick={applyFilters}>Apply</Button>
-        </Group>
-      </Paper>
-
-      <SimpleGrid cols={{ base: 2, sm: 4 }} mb="md">
-        <StatCard label="Total" value={statsQuery.data?.total} />
-        <StatCard label="Pending" value={statsQuery.data?.pending} />
-        <StatCard label="In Progress" value={statsQuery.data?.inProgress} />
-        <StatCard label="Completed" value={statsQuery.data?.completed} />
-      </SimpleGrid>
-
-      <Paper withBorder p="md" radius="md">
-        <Group justify="space-between" mb="sm">
-          <Title order={4}>Requests</Title>
-          <Group gap="sm">
-            {canEdit && selectedIds.size > 0 && (
-              <Button
-                size="xs"
-                color="red"
-                variant="light"
-                leftSection={<Trash2 size={14} />}
-                loading={deleteRequests.isPending}
-                onClick={handleBulkDelete}
-              >
-                Delete Selected ({selectedIds.size})
-              </Button>
-            )}
-            {data && (
-              <Badge variant="light">
-                {data.total} result{data.total !== 1 ? 's' : ''}
-              </Badge>
-            )}
-          </Group>
-        </Group>
-
-        <Table.ScrollContainer minWidth={960}>
-          <Table striped highlightOnHover verticalSpacing="sm">
-            <Table.Thead>
-              <Table.Tr>
-                {canEdit && (
-                  <Table.Th style={{ width: 36 }}>
-                    <Checkbox
-                      aria-label="Select all requests on this page"
-                      checked={allOnPageSelected}
-                      indeterminate={someOnPageSelected}
-                      onChange={toggleSelectAll}
-                    />
-                  </Table.Th>
-                )}
-                <Table.Th>#</Table.Th>
-                <Table.Th>Country</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Lock Level</Table.Th>
-                <Table.Th>Editor Rank</Table.Th>
-                <Table.Th>Permalink</Table.Th>
-                <Table.Th>Submitted By</Table.Th>
-                <Table.Th>Notes</Table.Th>
-                {/* <Table.Th>Status</Table.Th> */}
-                <Table.Th>Created</Table.Th>
-                {canEdit && <Table.Th />}
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {requestsQuery.isLoading && (
-                <Table.Tr>
-                  <Table.Td colSpan={canEdit ? 11 : 9}>
-                    <Text c="dimmed" ta="center">
-                      Loading…
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {requestsQuery.isError && (
-                <Table.Tr>
-                  <Table.Td colSpan={canEdit ? 11 : 9}>
-                    <Text c="red" ta="center">
-                      Error: {(requestsQuery.error as Error).message}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {data && !data.data.length && (
-                <Table.Tr>
-                  <Table.Td colSpan={canEdit ? 11 : 9}>
-                    <Text c="dimmed" ta="center">
-                      No requests found.
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {data?.data.map((r) => (
-                <Table.Tr key={r.id}>
-                  {canEdit && (
-                    <Table.Td>
-                      <Checkbox
-                        aria-label={`Select request ${r.id}`}
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => toggleSelect(r.id)}
-                      />
-                    </Table.Td>
-                  )}
-                  <Table.Td>{r.id}</Table.Td>
-                  <Table.Td>
-                    {r.region_code ? `${r.region_code}, ${r.country_code}` : r.country_code}
-                  </Table.Td>
-                  <Table.Td>
-                    <TypeBadge type={r.type} />
-                  </Table.Td>
-                  <Table.Td>{r.lock_level ?? '—'}</Table.Td>
-                  <Table.Td>{r.editor_rank ?? '—'}</Table.Td>
-                  <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <Anchor href={r.permalink} target="_blank" rel="noopener" size="sm">
-                        Open ↗
-                      </Anchor>
-                      {r.screenshot_key && (
-                        <ActionIcon
-                          component="a"
-                          href={`/api/screenshots/${r.screenshot_key}`}
-                          target="_blank"
-                          rel="noopener"
-                          variant="light"
-                          size="sm"
-                          aria-label="View screenshot"
-                          title="View screenshot"
-                        >
-                          <Camera size={14} />
-                        </ActionIcon>
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>{r.submitted_by || '—'}</Table.Td>
-                  <Table.Td>{r.notes || '—'}</Table.Td>
-                  {/* <Table.Td>
-                    <Select
-                      size="xs"
-                      w={140}
-                      data={STATUS_OPTIONS}
-                      value={r.status}
-                      onChange={(v) => handleStatusChange(r.id, v)}
-                      allowDeselect={false}
-                      aria-label="Status"
-                    />
-                  </Table.Td> */}
-                  <Table.Td>
-                    <Text size="xs">{fmtDate(r.created_at)}</Text>
-                  </Table.Td>
-                  {canEdit && (
-                    <Table.Td>
-                      <ActionIcon color="red" variant="light" onClick={() => handleDelete(r.id)} aria-label="Delete">
-                        <Trash2 size={16} />
-                      </ActionIcon>
-                    </Table.Td>
-                  )}
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-
-        {totalPages > 1 && (
-          <Group justify="center" mt="md" gap="xs">
-            <Button variant="default" size="xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </Button>
-            <Pagination total={totalPages} value={page} onChange={setPage} />
-            <Button variant="default" size="xs" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
-          </Group>
-        )}
-      </Paper>
-    </Container>
+    <div
+      style={{
+        width: 28,
+        height: 21,
+        borderRadius: 4,
+        overflow: 'hidden',
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: 'inset 0 0 0 1px light-dark(rgba(0,0,0,.15), rgba(255,255,255,.2))',
+        background: 'var(--mantine-color-default-hover)',
+      }}
+    >
+      {cls ? (
+        <span className={cls} style={{ width: '100%', height: '100%' }} />
+      ) : (
+        <Globe2 size={13} opacity={0.5} />
+      )}
+    </div>
   )
 }
 
-function StatCard({ label, value }: Readonly<{ label: string; value?: number }>) {
+export const Route = createFileRoute('/')({ component: Landing })
+
+const NOTIFICATION_METHODS = [
+  { icon: MessageSquare, label: 'Slack', description: 'Formatted cards via Incoming Webhooks, including threaded channels.' },
+  { icon: Gamepad2, label: 'Discord', description: 'Rich embeds, or new forum posts for Forum-type channels.' },
+  { icon: Send, label: 'Telegram', description: 'Bot messages, with the request screenshot attached when available.' },
+  { icon: Mail, label: 'Email', description: 'BYOK sending via Postmark, Mailgun, or plain SMTP.' },
+  { icon: MessageCircle, label: 'Google Chat', description: 'Text messages posted to a Space via an incoming webhook.' },
+  { icon: FileSpreadsheet, label: 'Google Sheets', description: 'Appends a row to a spreadsheet using a service account, adding headers automatically on the first write.' },
+  { icon: Webhook, label: 'Webhook', description: 'Plain JSON POST to any endpoint you control.' },
+  { icon: Radio, label: 'ntfy', description: 'Push to a public ntfy.sh topic or a self-hosted server.' },
+  { icon: Server, label: 'Gotify', description: 'Push notifications via a self-hosted Gotify server.' },
+  { icon: Bell, label: 'Web Push', description: 'Native browser notifications — no admin setup, just sign in and subscribe.' },
+  { icon: Rss, label: 'RSS / Atom Feed', description: 'A read-only feed for any reader, filterable by country, region, or type.' },
+]
+
+const FEATURES = [
+  {
+    icon: Lock,
+    title: 'Downlocks & Imagery',
+    description: 'Purpose-built for the two most common Waze Map Editor escalation types.',
+  },
+  {
+    icon: MapPinned,
+    title: 'Country & Region Scoped',
+    description: 'Route requests and notifications down to a specific country or region, or keep it global.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Access Controlled',
+    description: 'Give editors visibility into only the countries they manage, or grant global access.',
+  },
+  {
+    icon: Image,
+    title: 'Screenshot Attachments',
+    description: 'Requests submitted with a screenshot carry it through to email and Telegram notifications.',
+  },
+]
+
+function Landing() {
+  const countriesQuery = useCountries()
+  const countries = countriesQuery.data ?? []
+
   return (
-    <Paper withBorder p="md" radius="md" ta="center">
-      <Text size="xl" fw={700}>
-        {value ?? '—'}
-      </Text>
-      <Text size="xs" c="dimmed">
-        {label}
-      </Text>
-    </Paper>
+    <Container size="lg" pb={80}>
+      <Stack align="center" ta="center" gap="md" py={{ base: 40, sm: 64 }}>
+        <Title order={1} fz={{ base: 32, sm: 44 }} maw={720}>
+          Downlock &amp; imagery requests, tracked and delivered where you already work
+        </Title>
+        <Text size="lg" c="dimmed" maw={640}>
+          A shared queue for Waze Map Editor requests, submitted straight from WME via a userscript, and pushed out
+          to Slack, Discord, Telegram, email, and more — scoped by country and region.
+        </Text>
+        <Group mt="sm">
+          <Button component={Link} to="/requests" size="md" rightSection={<ArrowRight size={16} />}>
+            View Requests
+          </Button>
+          <Button component={Link} to="/help" size="md" variant="default">
+            Setup Guide
+          </Button>
+        </Group>
+      </Stack>
+
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md" mb={64}>
+        {FEATURES.map((f) => (
+          <Card key={f.title} withBorder radius="md" p="lg">
+            <f.icon size={22} />
+            <Text fw={600} mt="sm" mb={4}>
+              {f.title}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {f.description}
+            </Text>
+          </Card>
+        ))}
+      </SimpleGrid>
+
+      <Stack gap="xs" mb="md">
+        <Group gap="xs">
+          <Globe2 size={20} />
+          <Title order={2} fz={24}>
+            Supported Countries
+          </Title>
+        </Group>
+      </Stack>
+      <SimpleGrid cols={{ base: 2, xs: 3, sm: 4, md: 5 }} spacing="sm" mb={64}>
+        {countriesQuery.isLoading &&
+          Array.from({ length: 12 }).map((_, i) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <Skeleton key={i} height={45} radius="md" />
+          ))}
+        {!countriesQuery.isLoading && !countries.length && (
+          <Text c="dimmed" size="sm">
+            No countries configured yet.
+          </Text>
+        )}
+        {countries.map((c) => (
+          <Paper key={c.id} withBorder radius="md" p="xs">
+            <Group gap="xs" wrap="nowrap">
+              <CountryFlag code={c.code} />
+              <div style={{ minWidth: 0 }}>
+                <Text size="sm" fw={500} truncate>
+                  {c.name}
+                </Text>
+              </div>
+            </Group>
+          </Paper>
+        ))}
+      </SimpleGrid>
+
+      <Stack gap="xs" mb="md">
+        <Group gap="xs">
+          <Bell size={20} />
+          <Title order={2} fz={24}>
+            Supported Notification Methods
+          </Title>
+        </Group>
+        <Text c="dimmed" size="sm">
+          Notifications fire the moment a request comes in. Admins can wire up any combination of channels per
+          country or region — see the <Link to="/help">setup guide</Link> for step-by-step instructions.
+        </Text>
+      </Stack>
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+        {NOTIFICATION_METHODS.map((m) => (
+          <Card key={m.label} withBorder radius="md" p="md">
+            <Group gap="xs" mb={4}>
+              <m.icon size={16} />
+              <Text fw={600} size="sm">
+                {m.label}
+              </Text>
+            </Group>
+            <Text size="xs" c="dimmed">
+              {m.description}
+            </Text>
+          </Card>
+        ))}
+      </SimpleGrid>
+    </Container>
   )
 }

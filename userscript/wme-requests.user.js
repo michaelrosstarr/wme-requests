@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.2.0
+// @version      2.3.0
 // @description  Send downlock and imagery requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
@@ -14,6 +14,9 @@
 // @grant        unsafeWindow
 // @license MIT
 // @connect      *
+// @supportURL   https://github.com/michaelrosstarr/wme-requests/issues
+// @updateURL    https://raw.githubusercontent.com/michaelrosstarr/wme-requests/main/userscript/wme-requests.user.js
+// @downloadURL  https://raw.githubusercontent.com/michaelrosstarr/wme-requests/main/userscript/wme-requests.user.js
 // ==/UserScript==
 
 /* global unsafeWindow */
@@ -31,6 +34,9 @@
 
   // ── State ───────────────────────────────────────────────────────────────────
   let apiBase = GM_getValue('apiBase', DEFAULT_API_BASE);
+  // 'full' (text only), 'compact' (icon + text), or 'icon' (icon only) — style of the
+  // always-visible floating Downlock/Imagery buttons. See applyFabStyle().
+  let fabStyle = GM_getValue('fabStyle', 'full');
   let countries = [];
   // Regions (states/provinces) of whichever country is currently selected — refetched
   // whenever that changes. Optional: a country with none configured just has an empty list.
@@ -42,6 +48,7 @@
   let sdk = null;
   let getSelectionFn = null;
   let getSegmentByIdFn = null;
+  let getSegmentAddressFn = null;
   let getTopCountryFn = null;
   let getTopStateFn = null;
 
@@ -62,8 +69,32 @@
     log('Initialising…');
     injectStyles();
     createPanel();
-    sdk.Events.on({ eventName: 'wme-selection-changed', eventHandler: onSelectionChanged });
+    // Debounced: WME can fire this event in rapid bursts (e.g. drag-selecting many
+    // segments), and the handler does synchronous SDK calls plus a region fetch —
+    // coalescing bursts into one update avoids visible editor jank.
+    sdk.Events.on({ eventName: 'wme-selection-changed', eventHandler: debounce(onSelectionChanged, 150) });
+    // Keeps Country/Region in sync with wherever the Wazer pans/zooms to, not just
+    // when a segment is selected — same detection path (applyAutoCountry chains into
+    // fetchRegions → applyAutoRegion), just triggered by map movement. Event name
+    // isn't confirmed by the public docs (same caveat as getTopState — see
+    // resolveSdkMethods) so onMapMoveEnd logs on every fire when DEBUG is on, making
+    // a silent no-op (wrong event name) diagnosable from the console.
+    sdk.Events.on({ eventName: 'wme-map-move-end', eventHandler: debounce(onMapMoveEnd, 150) });
     log('Ready.');
+  }
+
+  function onMapMoveEnd() {
+    debugLog('onMapMoveEnd: fired, re-running auto country/region detection.');
+    const segments = getSelectedSegments();
+    applyAutoCountry(segments[0]);
+  }
+
+  function debounce(fn, wait) {
+    let timer = null;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), wait);
+    };
   }
 
   // Finds the current SDK method name for things the docs describe but don't give
@@ -89,6 +120,16 @@
       'Editing selection getter',
     );
     getSegmentByIdFn = sdkMethodOf(sdk.DataModel?.Segments, ['getById'], 'DataModel.Segments.getById');
+    // Not confirmed by the public docs either — the BaseAddress/SegmentAddress
+    // interfaces are documented (with .country/.state fields), but not which method
+    // returns one for a given segment. If none of these candidates exist, sdkMethodOf
+    // logs every real method available on DataModel.Segments, which is how to find
+    // the actual name to add here.
+    getSegmentAddressFn = sdkMethodOf(
+      sdk.DataModel?.Segments,
+      ['getAddress', 'getSegmentAddress', 'getAddressForSegment'],
+      'DataModel.Segments.getAddress',
+    );
     getTopCountryFn = sdkMethodOf(sdk.DataModel?.Countries, ['getTopCountry'], 'DataModel.Countries.getTopCountry');
     // Not confirmed by the public SDK docs at all — probed the same way as getTopCountry.
     // If none of these exist, region auto-detect silently falls back to manual selection.
@@ -116,7 +157,8 @@
          the panel's DOM subtree (appended directly to document.body) and share
          these same classes, so they need to match regardless of ancestry. */
       .wmereq-btn {
-        display: inline-block; padding: 7px 16px; border: none; border-radius: 6px;
+        display: inline-flex; align-items: center; justify-content: center; line-height: 1.2;
+        padding: 7px 16px; border: none; border-radius: 6px;
         cursor: pointer; font-size: 13px; font-weight: 600; margin-right: 5px;
         font-family: 'Rubik', sans-serif; box-shadow: 0 1px 2px rgba(0,0,0,.15);
         transition: background-color .15s, box-shadow .15s;
@@ -129,8 +171,6 @@
       .wmereq-btn-downlock:hover { background: #c62828; }
       .wmereq-btn-imagery  { background: #0a8cff; color: #fff; }
       .wmereq-btn-imagery:hover  { background: #0077e6; }
-      .wmereq-btn-settings { background: #757575; color: #fff; flex-shrink: 0; }
-      .wmereq-btn-settings:hover { background: #616161; }
       .wmereq-btn-cancel   { background: #e4e7eb; color: #333; }
       .wmereq-btn-cancel:hover   { background: #d4d8dc; }
       #${PANEL_ID} .wmereq-status { font-size: 11px; margin-top: 6px; padding: 5px 8px; border-radius: 4px; }
@@ -147,18 +187,6 @@
       #${PANEL_ID} .wmereq-btn-close {
         position: absolute; top: 6px; right: 8px; background: transparent; color: #888; padding: 2px 6px;
       }
-      #wmereq-settings-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9999;
-        display: flex; align-items: center; justify-content: center;
-      }
-      #wmereq-settings-overlay .wmereq-dialog {
-        background: #fff; border-radius: 8px; padding: 20px; width: 340px;
-        box-shadow: 0 4px 24px rgba(0,0,0,.3);
-      }
-      #wmereq-settings-overlay h4 { margin: 0 0 12px; font-size: 14px; }
-      #wmereq-settings-overlay .form-row { margin-bottom: 10px; }
-      #wmereq-settings-overlay label { font-size: 12px; font-weight: 500; display: block; margin-bottom: 3px; }
-      #wmereq-settings-overlay input { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; box-sizing: border-box; }
       #wmereq-reason-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9999;
         display: flex; align-items: center; justify-content: center;
@@ -193,14 +221,24 @@
       }
       #wmereq-floating-actions .wmereq-fab-handle:hover { background: rgba(0,0,0,.28); }
       #wmereq-floating-actions .wmereq-fab {
-        border: none; border-radius: 20px; padding: 10px 18px; font-size: 13px; font-weight: 600;
+        border: none; border-radius: 16px; padding: 7px 12px; font-size: 11px; font-weight: 600;
         cursor: pointer; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); transition: opacity .15s;
-        text-align: center; width: 140px;
+        text-align: center; width: auto;
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       }
       #wmereq-floating-actions .wmereq-fab:hover { opacity: .85; }
       #wmereq-floating-actions .wmereq-fab:disabled { opacity: .5; cursor: default; }
       #wmereq-floating-actions .wmereq-fab-downlock { background: #e53935; }
       #wmereq-floating-actions .wmereq-fab-imagery  { background: #0a8cff; }
+      #wmereq-floating-actions .wmereq-fab-icon { display: none; font-size: 13px; line-height: 1; }
+      /* Icon + text mode: shows the icon alongside the (already small) label. */
+      #wmereq-floating-actions.wmereq-fab-compact .wmereq-fab-icon { display: inline; }
+      /* Icon-only mode: circular button, label hidden entirely. */
+      #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab {
+        width: 38px; height: 38px; padding: 0; border-radius: 50%;
+      }
+      #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab-icon { display: inline; font-size: 16px; }
+      #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab-label { display: none; }
       #wmereq-floating-actions .wmereq-fab-status {
         font-size: 11px; padding: 5px 10px; border-radius: 12px; max-width: 220px; text-align: left;
         background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.25);
@@ -266,13 +304,23 @@
     wrap.innerHTML = `
       <div class="wmereq-fab-handle" title="Drag to move">⠿ ⠿ ⠿</div>
       <div id="wmereq-fab-status" class="wmereq-fab-status" style="display:none"></div>
-      <button class="wmereq-fab wmereq-fab-downlock" id="wmereq-fab-downlock" title="Submit a downlock request for the selected segment">Downlock</button>
-      <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment">Imagery</button>
+      <button class="wmereq-fab wmereq-fab-downlock" id="wmereq-fab-downlock" title="Submit a downlock request for the selected segment"><span class="wmereq-fab-icon">🔒</span><span class="wmereq-fab-label">Downlock</span></button>
+      <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment"><span class="wmereq-fab-icon">📷</span><span class="wmereq-fab-label">Imagery</span></button>
     `;
     document.body.appendChild(wrap);
     on('wmereq-fab-downlock', 'click', () => quickSubmit('downlock'));
     on('wmereq-fab-imagery', 'click', () => quickSubmit('imagery'));
     makeDraggable(wrap, wrap.querySelector('.wmereq-fab-handle'), 'wmereq-fab-pos');
+    applyFabStyle();
+  }
+
+  // Toggles the floating buttons between text-only, icon + text, and icon-only —
+  // see the `fabStyle` setting, changeable from the settings dialog.
+  function applyFabStyle() {
+    const wrap = byId('wmereq-floating-actions');
+    if (!wrap) return;
+    wrap.classList.toggle('wmereq-fab-compact', fabStyle === 'compact');
+    wrap.classList.toggle('wmereq-fab-icon-only', fabStyle === 'icon');
   }
 
   // Restores a persisted { top, left } position (if any) and lets the user drag the
@@ -330,7 +378,7 @@
   function buildPanelHTML() {
     return `
       <div>
-        <h3>WME Requests <button class="wmereq-btn wmereq-btn-settings" id="wmereq-btn-settings">Settings</button></h3>
+        <h3>WME Requests</h3>
 
         <div class="wmereq-section" id="wmereq-segment-info">
           <div class="wmereq-hint">Select a segment on the map to get started.</div>
@@ -372,6 +420,22 @@
           <div id="wmereq-status" class="wmereq-status info" style="display:none"></div>
         </div>
 
+        <div class="wmereq-section" id="wmereq-settings-section">
+          <div style="font-weight:600;margin-bottom:8px;color:#333">Settings</div>
+
+          <label>API Base URL</label>
+          <input id="wmereq-api-base" type="url" value="${escHtml(apiBase)}" placeholder="https://your-project.your-subdomain.workers.dev" />
+
+          <label>Floating Buttons</label>
+          <select id="wmereq-fab-style">
+            <option value="full" ${fabStyle === 'full' ? 'selected' : ''}>Text only</option>
+            <option value="compact" ${fabStyle === 'compact' ? 'selected' : ''}>Icon + text</option>
+            <option value="icon" ${fabStyle === 'icon' ? 'selected' : ''}>Icon only</option>
+          </select>
+
+          <button class="wmereq-btn wmereq-btn-primary" id="wmereq-settings-save">Save Settings</button>
+        </div>
+
         <div class="wmereq-version">${SCRIPT_NAME} v${escHtml(getScriptVersion())}</div>
       </div>`;
   }
@@ -381,7 +445,7 @@
     on('wmereq-country', 'change', (e) => fetchRegions(e.target.value));
     on('wmereq-btn-submit-downlock', 'click', () => submitRequest('downlock'));
     on('wmereq-btn-submit-imagery', 'click', () => submitRequest('imagery'));
-    on('wmereq-btn-settings', 'click', openSettings);
+    on('wmereq-settings-save', 'click', saveSettings);
     on('wmereq-btn-screenshot', 'click', handleScreenshotButtonClick);
   }
 
@@ -532,79 +596,129 @@
       if (hint) hint.textContent = `(inferred from segment: ${lockLevel})`;
     }
 
-    applyAutoCountry();
+    applyAutoCountry(seg);
     syncLockRow();
   }
 
-  // Matches the country the Wazer is currently viewing/editing (WME's "top country"
-  // for the current map view) to a configured country in our list, by ISO code or name.
-  function resolveCurrentCountryId() {
-    if (!countries.length) { log('resolveCurrentCountryId: no countries loaded from the API yet.'); return null; }
-    if (!getTopCountryFn) { log('resolveCurrentCountryId: no DataModel.Countries.getTopCountry method resolved.'); return null; }
+  // Matches an SDK country/state object (exact field casing unconfirmed by the public
+  // docs) against one of our own backend's lists, by ISO code or name.
+  function matchByNameOrCode(list, obj) {
+    if (!obj) return null;
+    const name = String(pick(obj, ['name']) || '').toLowerCase();
+    const abbr = String(pick(obj, ['abbr', 'code', 'isoCode']) || '').toLowerCase();
+    return (
+      list.find(
+        (item) => (abbr && String(item.code || '').toLowerCase() === abbr) || String(item.name || '').toLowerCase() === name,
+      ) || null
+    );
+  }
+
+  // Fetches the SegmentAddress for a specific segment (exact — tied to that segment,
+  // not the map view), via the probed getSegmentAddressFn. See resolveSdkMethods for
+  // why the method name isn't confirmed by the public docs.
+  function getSegmentAddress(seg) {
+    if (!getSegmentAddressFn || !seg) return null;
+    try {
+      const address = getSegmentAddressFn({ segmentId: seg.id });
+      if (!address) {
+        debugLog('getSegmentAddress: returned nothing.');
+        return null;
+      }
+      if (DEBUG) debugLog(`getSegmentAddress: raw address object = ${JSON.stringify(address)}`);
+      return address;
+    } catch (e) {
+      debugLog('getSegmentAddress: threw: ' + e.message);
+      return null;
+    }
+  }
+
+  // Resolves the country for the current context: if a segment is given, its own
+  // SegmentAddress.country is exact and tried first; otherwise (or if that doesn't
+  // resolve) falls back to WME's "top country" for the current map view, which is
+  // only approximate — it can be wrong near borders or for small regions.
+  function resolveCurrentCountryId(seg) {
+    if (!countries.length) { debugLog('resolveCurrentCountryId: no countries loaded from the API yet.'); return null; }
+
+    const address = getSegmentAddress(seg);
+    if (address) {
+      const match = matchByNameOrCode(countries, address.country);
+      log(
+        `resolveCurrentCountryId: segment address country=${address.country ? JSON.stringify(address.country) : 'null'} ` +
+        `→ ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
+      );
+      if (match) return match.id;
+    }
+
+    if (!getTopCountryFn) { debugLog('resolveCurrentCountryId: no DataModel.Countries.getTopCountry method resolved.'); return null; }
     try {
       const topCountry = getTopCountryFn();
       if (!topCountry) {
-        log('resolveCurrentCountryId: getTopCountry() returned nothing.');
+        debugLog('resolveCurrentCountryId: getTopCountry() returned nothing.');
         return null;
       }
-      log(`resolveCurrentCountryId: top country object = ${JSON.stringify(topCountry)}`);
-      const name = String(pick(topCountry, ['name']) || '').toLowerCase();
-      const abbr = String(pick(topCountry, ['abbr', 'code', 'isoCode']) || '').toLowerCase();
-      const match = countries.find((c) =>
-        (abbr && String(c.code || '').toLowerCase() === abbr) || String(c.name || '').toLowerCase() === name
-      );
-      if (!match) {
-        log(`resolveCurrentCountryId: no configured country matched name="${name}" abbr="${abbr}". Configured: ${countries.map((c) => `${c.name}/${c.code}`).join(', ')}`);
+      if (DEBUG) debugLog(`resolveCurrentCountryId: top country object = ${JSON.stringify(topCountry)}`);
+      const match = matchByNameOrCode(countries, topCountry);
+      if (!match && DEBUG) {
+        debugLog(`resolveCurrentCountryId: no configured country matched view country. Configured: ${countries.map((c) => `${c.name}/${c.code}`).join(', ')}`);
       }
       return match ? match.id : null;
     } catch (e) {
-      log('resolveCurrentCountryId: getTopCountry threw: ' + e.message);
+      debugLog('resolveCurrentCountryId: getTopCountry threw: ' + e.message);
       return null;
     }
   }
 
-  function applyAutoCountry() {
+  function applyAutoCountry(seg) {
     const countrySel = byId('wmereq-country');
     if (!countrySel) return;
-    const resolved = resolveCurrentCountryId();
+    const resolved = resolveCurrentCountryId(seg);
     if (resolved) {
       countrySel.value = String(resolved);
-      fetchRegions(String(resolved));
+      fetchRegions(String(resolved), seg);
     }
   }
 
-  // Matches the state/province the Wazer is currently viewing/editing to a configured
-  // region in the current country's list, by code or name — same approach as
-  // resolveCurrentCountryId, but for the (unconfirmed) DataModel.States API.
-  function resolveCurrentRegionId() {
-    if (!regions.length) { log('resolveCurrentRegionId: no regions loaded for the current country.'); return null; }
-    if (!getTopStateFn) { log('resolveCurrentRegionId: no DataModel.States.getTopState method resolved.'); return null; }
+  // Resolves the region for the current context — same segment-address-first, then
+  // view-based-fallback approach as resolveCurrentCountryId, but for state/province.
+  function resolveCurrentRegionId(seg) {
+    if (!regions.length) { debugLog('resolveCurrentRegionId: no regions loaded for the current country.'); return null; }
+
+    const address = getSegmentAddress(seg);
+    if (address) {
+      const match = matchByNameOrCode(regions, address.state);
+      log(
+        `resolveCurrentRegionId: segment address state=${address.state ? JSON.stringify(address.state) : 'null'} — ` +
+        `configured regions: [${regions.map((r) => `${r.name}/${r.code}`).join(', ')}] → ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
+      );
+      if (match) return match.id;
+    }
+
+    if (!getTopStateFn) { debugLog('resolveCurrentRegionId: no DataModel.States.getTopState method resolved.'); return null; }
     try {
       const topState = getTopStateFn();
       if (!topState) {
-        log('resolveCurrentRegionId: getTopState() returned nothing.');
+        debugLog('resolveCurrentRegionId: getTopState() returned nothing.');
         return null;
       }
-      log(`resolveCurrentRegionId: top state object = ${JSON.stringify(topState)}`);
-      const name = String(pick(topState, ['name']) || '').toLowerCase();
-      const abbr = String(pick(topState, ['abbr', 'code', 'isoCode']) || '').toLowerCase();
-      const match = regions.find((r) =>
-        (abbr && String(r.code || '').toLowerCase() === abbr) || String(r.name || '').toLowerCase() === name
+      if (DEBUG) debugLog(`resolveCurrentRegionId: top state object = ${JSON.stringify(topState)}`);
+      const match = matchByNameOrCode(regions, topState);
+      // Always printed (not gated behind DEBUG) so it's easy to see live in WME why a
+      // given region did or didn't match, without needing to flip on debug mode first.
+      log(
+        `resolveCurrentRegionId: view state — configured regions: ` +
+        `[${regions.map((r) => `${r.name}/${r.code}`).join(', ')}] → ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
       );
-      if (!match) {
-        log(`resolveCurrentRegionId: no configured region matched name="${name}" abbr="${abbr}". Configured: ${regions.map((r) => `${r.name}/${r.code}`).join(', ')}`);
-      }
       return match ? match.id : null;
     } catch (e) {
-      log('resolveCurrentRegionId: getTopState threw: ' + e.message);
+      debugLog('resolveCurrentRegionId: getTopState threw: ' + e.message);
       return null;
     }
   }
 
-  function applyAutoRegion() {
+  function applyAutoRegion(seg) {
     const regionSel = byId('wmereq-region');
     if (!regionSel) return;
-    const resolved = resolveCurrentRegionId();
+    const resolved = resolveCurrentRegionId(seg);
     regionSel.value = resolved ? String(resolved) : '';
   }
 
@@ -620,31 +734,31 @@
   // since sdk.State.userInfo (per the public docs) came back empty in testing.
   function findUserInfo() {
     if (!sdk?.State) {
-      log('findUserInfo: sdk.State module is missing entirely.');
+      debugLog('findUserInfo: sdk.State module is missing entirely.');
       return null;
     }
-    log(`findUserInfo: sdk.State = ${describeObject(sdk.State)}`);
+    if (DEBUG) debugLog(`findUserInfo: sdk.State = ${describeObject(sdk.State)}`);
 
     if (sdk.State.userInfo) {
-      log(`findUserInfo: sdk.State.userInfo (property) = ${JSON.stringify(sdk.State.userInfo)}`);
+      if (DEBUG) debugLog(`findUserInfo: sdk.State.userInfo (property) = ${JSON.stringify(sdk.State.userInfo)}`);
       return sdk.State.userInfo;
     }
     if (typeof sdk.State.getUserInfo === 'function') {
       const result = sdk.State.getUserInfo();
-      log(`findUserInfo: sdk.State.getUserInfo() = ${JSON.stringify(result)}`);
+      if (DEBUG) debugLog(`findUserInfo: sdk.State.getUserInfo() = ${JSON.stringify(result)}`);
       if (result) return result;
     }
     if (typeof sdk.State.get === 'function') {
       const result = sdk.State.get('userInfo');
-      log(`findUserInfo: sdk.State.get('userInfo') = ${JSON.stringify(result)}`);
+      if (DEBUG) debugLog(`findUserInfo: sdk.State.get('userInfo') = ${JSON.stringify(result)}`);
       if (result) return result;
     }
     if (sdk.User) {
-      log(`findUserInfo: sdk.User = ${describeObject(sdk.User)}`);
+      if (DEBUG) debugLog(`findUserInfo: sdk.User = ${describeObject(sdk.User)}`);
       if (sdk.User.userInfo) return sdk.User.userInfo;
       if (typeof sdk.User.getUserInfo === 'function') return sdk.User.getUserInfo();
     }
-    log(`findUserInfo: no user info found. Top-level sdk keys = ${Object.keys(sdk || {}).join(', ')}`);
+    debugLog(`findUserInfo: no user info found. Top-level sdk keys = ${Object.keys(sdk || {}).join(', ')}`);
     return null;
   }
 
@@ -779,8 +893,8 @@
     if (!selectedSegs.length) { showFabStatus('Select a segment first.', 'error'); return; }
 
     const seg = selectedSegs[0];
-    const countryId = resolveCurrentCountryId();
-    const regionId = resolveCurrentRegionId();
+    const countryId = resolveCurrentCountryId(seg);
+    const regionId = resolveCurrentRegionId(seg);
     const lockRankRaw = pick(seg, ['lockRank', 'lockLevel']);
     const lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
 
@@ -868,59 +982,51 @@
     }
   }
 
+  // Tracks which country's regions are currently loaded, so re-detecting the same
+  // country on every selection change (the common case) doesn't refire the API call.
+  let regionsLoadedForCountryId = null;
+
   // Refetches the region list for the given country and repopulates the region select.
   // Called whenever the country changes, whether by auto-detect or manual selection.
-  async function fetchRegions(countryId) {
+  async function fetchRegions(countryId, seg) {
     const sel = byId('wmereq-region');
-    regions = [];
     if (!countryId) {
+      regions = [];
+      regionsLoadedForCountryId = null;
       if (sel) sel.innerHTML = '<option value="">Country-wide</option>';
+      return;
+    }
+    if (countryId === regionsLoadedForCountryId) {
+      applyAutoRegion(seg);
       return;
     }
     try {
       regions = await apiGet(`/countries/${countryId}/regions`);
+      regionsLoadedForCountryId = countryId;
       if (sel) {
         sel.innerHTML =
           '<option value="">Country-wide</option>' +
           regions.map((r) => `<option value="${r.id}">${escHtml(r.name)} (${escHtml(r.code)})</option>`).join('');
       }
-      applyAutoRegion();
+      applyAutoRegion(seg);
     } catch (e) {
       log('Failed to load regions: ' + e.message);
     }
   }
 
-  // ── Settings dialog ───────────────────────────────────────────────────────────
-  function openSettings() {
-    const dlg = document.createElement('div');
-    dlg.id = 'wmereq-settings-overlay';
-    dlg.innerHTML = `
-      <div class="wmereq-dialog">
-        <h4>WME Requests Settings</h4>
-        <div class="form-row">
-          <label>API Base URL</label>
-          <input id="wmereq-api-base" type="url" value="${escHtml(apiBase)}" placeholder="https://your-project.your-subdomain.workers.dev" />
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="wmereq-btn wmereq-btn-primary" id="wmereq-settings-save">Save</button>
-          <button class="wmereq-btn wmereq-btn-cancel" id="wmereq-settings-cancel">Cancel</button>
-        </div>
-      </div>`;
-    document.body.appendChild(dlg);
-
-    dlg.querySelector('#wmereq-settings-save').addEventListener('click', () => {
-      const val = dlg.querySelector('#wmereq-api-base').value.trim().replace(/\/$/, '');
-      if (val) {
-        apiBase = val;
-        GM_setValue('apiBase', val);
-        fetchCountries();
-      }
-      document.body.removeChild(dlg);
-    });
-    dlg.querySelector('#wmereq-settings-cancel').addEventListener('click', () => {
-      document.body.removeChild(dlg);
-    });
-    dlg.addEventListener('click', (e) => { if (e.target === dlg) document.body.removeChild(dlg); });
+  // ── Settings section (always visible, below the request form) ──`───────────────`
+  function saveSettings() {
+    const val = (byId('wmereq-api-base') || {}).value?.trim().replace(/\/$/, '');
+    if (val) {
+      apiBase = val;
+      GM_setValue('apiBase', val);
+      regionsLoadedForCountryId = null; // a different backend may have different regions for the same id
+      fetchCountries();
+    }
+    fabStyle = (byId('wmereq-fab-style') || {}).value;
+    GM_setValue('fabStyle', fabStyle);
+    applyFabStyle();
+    showStatus('Settings saved.', 'ok');
   }
 
   // ── API helpers (GM_xmlhttpRequest) ───────────────────────────────────────────
@@ -1018,6 +1124,13 @@
   }
 
   function log(msg) { console.log(`[${SCRIPT_NAME}] ${msg}`); }
+
+  // Verbose diagnostics (SDK object dumps) run on every selection change, so they're
+  // gated behind this flag instead of always paying the JSON.stringify/string-build
+  // cost. Enable via `GM_setValue('wmereq-debug', true)` in the console when diagnosing
+  // an SDK method-resolution issue.
+  const DEBUG = GM_getValue('wmereq-debug', false);
+  function debugLog(msg) { if (DEBUG) log(msg); }
 
   // Reads the running version from the userscript manager's metadata (GM_info) rather
   // than a separate hardcoded constant, so it can never drift from the @version header.

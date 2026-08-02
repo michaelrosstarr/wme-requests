@@ -23,7 +23,7 @@ function Login() {
       setError(signInError.message ?? 'Sign in failed')
       return
     }
-    navigate({ to: '/' })
+    navigate({ to: '/requests' })
   }
 
   return (

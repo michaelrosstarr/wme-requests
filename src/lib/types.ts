@@ -1,6 +1,16 @@
 export type RequestType = 'downlock' | 'imagery'
 export type Status = 'pending' | 'in_progress' | 'completed' | 'rejected'
-export type Platform = 'slack' | 'discord' | 'telegram' | 'email' | 'webhook' | 'google_sheets'
+export type Platform =
+  | 'slack'
+  | 'slack_threaded'
+  | 'discord'
+  | 'telegram'
+  | 'email'
+  | 'webhook'
+  | 'google_sheets'
+  | 'google_chat'
+  | 'ntfy'
+  | 'gotify'
 export type EventType = 'global' | 'downlock' | 'imagery'
 export type CredentialType = 'google_service_account' | 'email_postmark' | 'email_mailgun' | 'email_smtp'
 
@@ -109,4 +119,16 @@ export interface UserReportRow {
 
 export interface UserReportResponse {
   data: UserReportRow[]
+}
+
+export interface PushSubscription {
+  id: number
+  country_id: number
+  region_id: number | null
+  event_type: EventType
+  created_at: string
+  country_name: string
+  country_code: string
+  region_name: string | null
+  region_code: string | null
 }

@@ -68,6 +68,9 @@ This applies everything under [`migrations/`](migrations/):
 | `0011_regions.sql` | `regions` — country-scoped states/provinces |
 | `0012_credentials.sql` | `credentials` — the shared Google service-account pool + per-user BYOK email credentials |
 | `0013_channel_credential_refs.sql` | `notification_channels.google_credential_id`/`email_credential_id`, replacing the old per-channel embedded credential |
+| `0014_google_chat_channel.sql` | `google_chat` notification platform |
+| `0015_push_subscriptions.sql` | `push_subscriptions` — self-service browser Web Push, independent of the channels above |
+| `0016_ntfy_gotify_channels.sql` | `ntfy` and `gotify` notification platforms |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -102,7 +105,7 @@ local dev.
 ## 7 — Configure Postmark for system emails (optional)
 
 This is only for the app's own transactional email — user invites and password resets (see
-step 9). It's separate from the `email` notification platform, which is BYOK and configured per
+step 10). It's separate from the `email` notification platform, which is BYOK and configured per
 user in the Credentials Manager (step 8) instead. Skip this step if you don't plan to invite
 users by email (you can still create accounts directly via `create-admin-user.mjs`/**Admin**).
 
@@ -176,7 +179,51 @@ Skip this step if you're not using the `google_sheets` or `email` notification p
    [`worker-mailer`](https://www.npmjs.com/package/worker-mailer)) on port 587 or 465 — port 25
    isn't reachable from Workers.
 
-## 9 — Create your first admin account
+## 9 — Configure Web Push notifications (optional)
+
+Unlike the channels above, Web Push isn't admin-configured — any signed-in user can click
+**Notify me** on the dashboard to subscribe their own browser to a country (optionally scoped to
+a region and request type). Skip this step if you don't need browser push notifications.
+
+1. Generate a VAPID key pair with the bundled CLI from
+   [`@pushforge/builder`](https://www.npmjs.com/package/@pushforge/builder) (already a project
+   dependency — no separate install needed):
+
+   ```bash
+   npx @pushforge/builder vapid
+   ```
+
+   This prints a public key and a private key in JWK format.
+
+2. Set the private key as a secret (never in `wrangler.jsonc`):
+
+   ```bash
+   # Local development — appended to .dev.vars (already gitignored) as the raw JSON string
+   echo 'WEB_PUSH_VAPID_PRIVATE_JWK={"alg":"ES256",...}' >> .dev.vars
+
+   # Production
+   wrangler secret put WEB_PUSH_VAPID_PRIVATE_JWK
+   ```
+
+3. Set the public key and a contact address as plain vars in `wrangler.jsonc` (the public key is
+   safe to expose — it's sent to the browser as `applicationServerKey`):
+
+   ```jsonc
+   "vars": {
+     "WEB_PUSH_VAPID_PUBLIC_KEY": "your-public-key-here",
+     "WEB_PUSH_CONTACT": "mailto:you@example.com"
+   }
+   ```
+
+4. Regenerate the Worker's env types and re-migrate for `push_subscriptions`:
+
+   ```bash
+   npm run cf-typegen
+   npm run db:migrate:local
+   npm run db:migrate:remote
+   ```
+
+## 10 — Create your first admin account
 
 There's no public sign-up page — sign-up is disabled at the API level. The very first account has
 to be provisioned directly in D1:
@@ -197,19 +244,19 @@ signed in: **Create** sets a password directly, **Invite** emails a link (via Po
 letting the person set their own password, and **Reset Password** re-sends that same link to an
 existing user. Invite/reset emails require step 7's Postmark config and step 6's `BETTER_AUTH_URL`.
 
-## 10 — Try it locally
+## 11 — Try it locally
 
 ```bash
 npm run dev
 ```
 
 Open `http://localhost:3000` — the dashboard and `/reports` are viewable without signing in
-(read-only), but `/admin` redirects to `/login`. Sign in with the account from step 9, then set
+(read-only), but `/admin` redirects to `/login`. Sign in with the account from step 10, then set
 up at least one country and notification channel from the `/admin` page before moving on (see
 [README § Notification Channels](README.md#notification-channels) for the channel body fields
 and `custom_prefix` variables).
 
-## 11 — Deploy
+## 12 — Deploy
 
 ```bash
 npm run deploy
@@ -219,7 +266,7 @@ This builds and pushes the Worker to Cloudflare. Your app is now live at `https:
 
 If this is your very first deploy and you haven't run step 4's `db:migrate:remote` yet, do that now — the deployed Worker needs the schema in place before it can serve any API requests.
 
-## 12 — Point the userscript at your deployment
+## 13 — Point the userscript at your deployment
 
 Open [`userscript/wme-requests.user.js`](userscript/wme-requests.user.js) and update:
 
@@ -229,7 +276,7 @@ const DEFAULT_API_BASE = 'https://YOUR-PROJECT.YOUR-SUBDOMAIN.workers.dev';
 
 Then install the script in Tampermonkey (or Greasemonkey). If you'd rather not edit the file, you can also leave the default as a placeholder and set the real URL later from inside WME: open the **WME Requests** panel → **Settings** → paste your Workers URL into **API Base URL** → **Save**. That value is stored per-browser via `GM_setValue`, so it persists across script updates without touching the file.
 
-## 13 — Updating later
+## 14 — Updating later
 
 ```bash
 git pull

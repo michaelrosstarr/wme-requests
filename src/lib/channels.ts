@@ -69,11 +69,23 @@ function validatePlatformFields(
   fields: Pick<ChannelBody, 'webhook_url' | 'bot_token' | 'chat_id' | 'email_to' | 'spreadsheet_id'>,
 ) {
   const { webhook_url, bot_token, chat_id, email_to, spreadsheet_id } = fields
-  if (platform === 'slack' || platform === 'discord' || platform === 'webhook') {
+  if (
+    platform === 'slack' ||
+    platform === 'discord' ||
+    platform === 'webhook' ||
+    platform === 'google_chat' ||
+    platform === 'ntfy' ||
+    platform === 'gotify'
+  ) {
     if (!webhook_url) return `webhook_url is required for ${platform}`
     if (!isURL(webhook_url)) return 'webhook_url must be a valid URL'
   }
   if (platform === 'telegram' && (!bot_token || !chat_id)) return 'bot_token and chat_id are required for telegram'
+  if (platform === 'slack_threaded' && (!bot_token || !chat_id))
+    return 'bot_token and chat_id are required for slack_threaded'
+  // Gotify's application token is required (there's no anonymous publish); ntfy's is optional —
+  // only protected topics need one, public topics work without any auth.
+  if (platform === 'gotify' && !bot_token) return 'An application token is required for gotify'
   if (platform === 'email') {
     if (!email_to) return 'email_to is required for email'
     if (!isEmail(email_to)) return 'email_to must be a valid email address'

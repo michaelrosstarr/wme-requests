@@ -1,15 +1,27 @@
-import { dbAll } from './db'
+import { dbAll, dbRun } from './db'
 import { appendSheetRow } from './google-sheets'
 import { screenshotUrl } from './screenshots'
 import { resolveGoogleCredential, resolveEmailCredential } from './credentials'
 import { sendEmail as dispatchEmail } from './email/send-email'
+import { sendPush } from './push'
+import { audiencePushSubscriptions, deleteSubscriptionById, type PushSubscriptionRow } from './subscriptions'
 
 export interface NotificationChannel {
   id: number
   country_id: number
   region_id: number | null
   label: string
-  platform: 'slack' | 'discord' | 'telegram' | 'email' | 'webhook' | 'google_sheets'
+  platform:
+    | 'slack'
+    | 'slack_threaded'
+    | 'discord'
+    | 'telegram'
+    | 'email'
+    | 'webhook'
+    | 'google_sheets'
+    | 'google_chat'
+    | 'ntfy'
+    | 'gotify'
   event_type: 'global' | 'downlock' | 'imagery'
   webhook_url: string | null
   bot_token: string | null
@@ -21,6 +33,9 @@ export interface NotificationChannel {
   sheet_name: string | null
   google_credential_id: number | null
   email_credential_id: number | null
+  last_thread_submitted_by: string | null
+  last_thread_ts: string | null
+  last_thread_day: string | null
 }
 
 export interface RequestRow {
@@ -77,10 +92,10 @@ function hexColor(color: number) {
   return `#${color.toString(16).padStart(6, '0')}`
 }
 
-// Slack incoming webhooks can't open a true modal (that requires a trigger_id from a
-// live user interaction) — the closest equivalent is a Block Kit card: a colored side
-// bar via a legacy "attachment" wrapping modern blocks, with fields laid out in a grid.
-async function sendSlack(webhookUrl: string, msg: ReturnType<typeof buildMessage>, prefix: string | null) {
+// Shared Block Kit builder for both plain and threaded Slack channels — a colored side bar
+// via a legacy "attachment" wrapping modern blocks, with fields laid out in a grid. (Incoming
+// webhooks can't open a true modal, which requires a trigger_id from a live user interaction.)
+function buildSlackPayload(msg: ReturnType<typeof buildMessage>, prefix: string | null) {
   const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
   const fields: Array<{ type: 'mrkdwn'; text: string }> = [
     { type: 'mrkdwn', text: `*Permalink:*\n<${msg.permalink}|Open>` },
@@ -104,16 +119,57 @@ async function sendSlack(webhookUrl: string, msg: ReturnType<typeof buildMessage
     blocks.push({ type: 'image', image_url: msg.screenshotUrl, alt_text: 'Map viewport screenshot' })
   }
 
+  return {
+    // Fallback/notification-preview text — also where the prefix's @mentions actually notify,
+    // since attachment blocks aren't reliably parsed for that the same way.
+    text: prefix || msg.title,
+    attachments: [{ color: hexColor(msg.color), blocks }],
+  }
+}
+
+async function sendSlack(webhookUrl: string, msg: ReturnType<typeof buildMessage>, prefix: string | null) {
   await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      // Fallback/notification-preview text — also where the prefix's @mentions actually notify,
-      // since attachment blocks aren't reliably parsed for that the same way.
-      text: prefix || msg.title,
-      attachments: [{ color: hexColor(msg.color), blocks }],
-    }),
+    body: JSON.stringify(buildSlackPayload(msg, prefix)),
   })
+}
+
+// Threads consecutive requests from the same submitter (same UTC calendar day) into one Slack
+// thread instead of a new top-level message each time. Incoming webhooks have no way to do
+// this — they don't return a message `ts` to reply against — so this uses chat.postMessage
+// with a bot token instead, and persists the last message's ts/submitter/day on the channel
+// row so the next request can decide whether to join it.
+async function sendSlackThreaded(
+  channel: NotificationChannel,
+  msg: ReturnType<typeof buildMessage>,
+  prefix: string | null,
+) {
+  const botToken = channel.bot_token
+  const chatId = channel.chat_id
+  if (!botToken || !chatId) throw new Error('Bot token and channel ID are required for slack_threaded')
+
+  const today = new Date().toISOString().slice(0, 10)
+  const threadTs =
+    msg.submittedBy &&
+    msg.submittedBy === channel.last_thread_submitted_by &&
+    today === channel.last_thread_day
+      ? channel.last_thread_ts
+      : null
+
+  const payload = buildSlackPayload(msg, prefix)
+  const res = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${botToken}` },
+    body: JSON.stringify({ channel: chatId, ...payload, ...(threadTs ? { thread_ts: threadTs } : {}) }),
+  })
+  const data = await res.json<{ ok: boolean; ts?: string; error?: string }>()
+  if (!data.ok) throw new Error(`Slack API error: ${data.error || 'unknown'}`)
+
+  await dbRun(
+    `UPDATE notification_channels SET last_thread_submitted_by = ?, last_thread_ts = ?, last_thread_day = ? WHERE id = ?`,
+    [msg.submittedBy || null, threadTs || data.ts || null, today, channel.id],
+  )
 }
 
 // Forum channels have no general message stream — every webhook post must create a new
@@ -142,6 +198,70 @@ async function sendDiscord(
         },
       ],
       ...(isForumThread ? { thread_name: (prefix || msg.title).slice(0, 100) } : {}),
+    }),
+  })
+}
+
+// Google Chat's incoming webhook takes a plain { text } body — it supports a small markup
+// subset (*bold*, <url|label> links) but nothing like Slack's block/attachment layout.
+async function sendGoogleChat(webhookUrl: string, msg: ReturnType<typeof buildMessage>, prefix: string | null) {
+  const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
+  const lines = [`*${msg.title}*`]
+  if (prefix) lines.push(prefix)
+  lines.push(`<${msg.permalink}|Open>`)
+  if (msg.lockLevel != null) lines.push(`Lock Level: ${msg.lockLevel}`)
+  if (msg.submittedBy) lines.push(`Submitted by: <${userProfileUrl(msg.submittedBy)}|${msg.submittedBy}>${rankSuffix}`)
+  if (msg.notes) lines.push(`Notes: ${msg.notes}`)
+
+  await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: lines.join('\n') }),
+  })
+}
+
+// ntfy's JSON publish endpoint lives at the server root, not the topic URL itself — posting
+// straight to the topic URL with headers would work too, but title/message would need to be
+// ASCII-safe (HTTP header values can't carry arbitrary Unicode), and request titles/notes
+// often aren't (e.g. em dashes). The JSON endpoint sidesteps that entirely.
+async function sendNtfy(topicUrl: string, token: string | null, msg: ReturnType<typeof buildMessage>, prefix: string | null) {
+  const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
+  const lines = bodyLines(msg)
+  if (msg.submittedBy) lines.push(`Submitted by: ${msg.submittedBy}${rankSuffix}`)
+
+  const url = new URL(topicUrl)
+  const topic = url.pathname.replace(/^\//, '')
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  await fetch(url.origin, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      topic,
+      title: prefix ? `${prefix} ${msg.title}` : msg.title,
+      message: lines.join('\n'),
+      click: msg.permalink,
+      ...(msg.screenshotUrl ? { attach: msg.screenshotUrl } : {}),
+    }),
+  })
+}
+
+// Gotify's application token is passed as a query param, not a header.
+async function sendGotify(serverUrl: string, token: string, msg: ReturnType<typeof buildMessage>, prefix: string | null) {
+  const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
+  const lines = bodyLines(msg)
+  if (msg.submittedBy) lines.push(`Submitted by: ${msg.submittedBy}${rankSuffix}`)
+
+  const base = serverUrl.endsWith('/') ? serverUrl.slice(0, -1) : serverUrl
+  await fetch(`${base}/message?token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: prefix ? `${prefix} ${msg.title}` : msg.title,
+      message: lines.join('\n'),
+      priority: 5,
+      extras: { 'client::notification': { click: { url: msg.permalink } } },
     }),
   })
 }
@@ -251,6 +371,21 @@ async function sendWebhook(webhookUrl: string, msg: ReturnType<typeof buildMessa
   })
 }
 
+const GOOGLE_SHEET_HEADERS = [
+  'Timestamp',
+  'Type',
+  'Country',
+  'Country Code',
+  'Region',
+  'Region Code',
+  'Permalink',
+  'Lock Level',
+  'Editor Rank',
+  'Notes',
+  'Submitted By',
+  'Screenshot URL',
+]
+
 async function sendGoogleSheet(
   channel: NotificationChannel,
   msg: ReturnType<typeof buildMessage>,
@@ -260,26 +395,33 @@ async function sendGoogleSheet(
   if (!channel.google_credential_id) throw new Error('No Google service account configured for this channel')
   const credentials = await resolveGoogleCredential(channel.google_credential_id)
 
-  await appendSheetRow(credentials, channel.spreadsheet_id, channel.sheet_name, [
-    new Date().toISOString(),
-    vars.type,
-    vars.country_name,
-    vars.country_code,
-    vars.region_name,
-    vars.region_code,
-    msg.permalink,
-    msg.lockLevel ?? '',
-    msg.editorRank ?? '',
-    msg.notes ?? '',
-    msg.submittedBy ?? '',
-    msg.screenshotUrl ?? '',
-  ])
+  await appendSheetRow(
+    credentials,
+    channel.spreadsheet_id,
+    channel.sheet_name,
+    [
+      new Date().toISOString(),
+      vars.type,
+      vars.country_name,
+      vars.country_code,
+      vars.region_name,
+      vars.region_code,
+      msg.permalink,
+      msg.lockLevel ?? '',
+      msg.editorRank ?? '',
+      msg.notes ?? '',
+      msg.submittedBy ?? '',
+      msg.screenshotUrl ?? '',
+    ],
+    GOOGLE_SHEET_HEADERS,
+  )
 }
 
 async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typeof buildMessage>, vars: PrefixVars) {
   try {
     const prefix = channel.custom_prefix ? applyPrefixTemplate(channel.custom_prefix, vars) : null
     if (channel.platform === 'slack' && channel.webhook_url) await sendSlack(channel.webhook_url, msg, prefix)
+    if (channel.platform === 'slack_threaded') await sendSlackThreaded(channel, msg, prefix)
     if (channel.platform === 'discord' && channel.webhook_url)
       await sendDiscord(channel.webhook_url, msg, prefix, !!channel.discord_forum)
     if (channel.platform === 'telegram' && channel.bot_token && channel.chat_id)
@@ -287,6 +429,11 @@ async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typ
     if (channel.platform === 'email' && channel.email_to)
       await sendEmail(msg, prefix, channel.email_to, channel.email_credential_id)
     if (channel.platform === 'webhook' && channel.webhook_url) await sendWebhook(channel.webhook_url, msg, prefix)
+    if (channel.platform === 'google_chat' && channel.webhook_url) await sendGoogleChat(channel.webhook_url, msg, prefix)
+    if (channel.platform === 'ntfy' && channel.webhook_url)
+      await sendNtfy(channel.webhook_url, channel.bot_token, msg, prefix)
+    if (channel.platform === 'gotify' && channel.webhook_url && channel.bot_token)
+      await sendGotify(channel.webhook_url, channel.bot_token, msg, prefix)
     if (channel.platform === 'google_sheets') await sendGoogleSheet(channel, msg, vars)
     return { id: channel.id, ok: true }
   } catch (e) {
@@ -311,6 +458,21 @@ async function audienceChannels(countryId: number, regionId: number | null, requ
   )
 }
 
+// Self-service push subscriptions (src/lib/subscriptions.ts) fire independently of the
+// admin-configured channels above — a matching subscription doesn't require any channel to
+// exist for that country/region.
+async function dispatchPush(sub: PushSubscriptionRow, msg: ReturnType<typeof buildMessage>) {
+  try {
+    const result = await sendPush(
+      { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+      { title: msg.title, body: msg.notes || `Permalink: ${msg.permalink}`, url: msg.permalink },
+    )
+    if (result === 'gone') await deleteSubscriptionById(sub.id)
+  } catch (e) {
+    console.error('Push delivery failed', e)
+  }
+}
+
 export async function fireNotifications(
   request: RequestRow,
   countryName: string,
@@ -319,7 +481,8 @@ export async function fireNotifications(
   regionCode: string | null = null,
 ) {
   const channels = await audienceChannels(request.country_id, request.region_id, request.type)
-  if (!channels.length) return
+  const pushSubs = await audiencePushSubscriptions(request.country_id, request.region_id, request.type)
+  if (!channels.length && !pushSubs.length) return
   const msg = buildMessage(request, countryName, regionName)
   const vars: PrefixVars = {
     country_code: countryCode,
@@ -331,7 +494,10 @@ export async function fireNotifications(
     type: request.type,
     submitted_by: request.submitted_by || '',
   }
-  await Promise.allSettled(channels.map((ch) => dispatchChannel(ch, msg, vars)))
+  await Promise.allSettled([
+    ...channels.map((ch) => dispatchChannel(ch, msg, vars)),
+    ...pushSubs.map((sub) => dispatchPush(sub, msg)),
+  ])
 }
 
 export async function sendTestMessage(

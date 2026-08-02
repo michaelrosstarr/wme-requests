@@ -11,12 +11,15 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProtectedRouteImport } from './routes/_protected'
+import { Route as HelpRouteImport } from './routes/help'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as ProtectedAdminRouteImport } from './routes/_protected/admin'
 import { Route as ApiCountriesRouteImport } from './routes/api/countries'
 import { Route as ApiCredentialsRouteImport } from './routes/api/credentials'
+import { Route as ApiFeedRouteImport } from './routes/api/feed'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
@@ -26,6 +29,9 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiChannelsIdRouteImport } from './routes/api/channels/$id'
 import { Route as ApiCountriesIdRouteImport } from './routes/api/countries/$id'
 import { Route as ApiCredentialsIdRouteImport } from './routes/api/credentials/$id'
+import { Route as ApiPushSubscribeRouteImport } from './routes/api/push/subscribe'
+import { Route as ApiPushSubscriptionsRouteImport } from './routes/api/push/subscriptions'
+import { Route as ApiPushVapidPublicKeyRouteImport } from './routes/api/push/vapid-public-key'
 import { Route as ApiRegionsIdRouteImport } from './routes/api/regions/$id'
 import { Route as ApiReportsByUserRouteImport } from './routes/api/reports/by-user'
 import { Route as ApiRequestsIdRouteImport } from './routes/api/requests/$id'
@@ -34,6 +40,7 @@ import { Route as ApiUsersInviteRouteImport } from './routes/api/users/invite'
 import { Route as ApiChannelsIdTestRouteImport } from './routes/api/channels/$id/test'
 import { Route as ApiCountriesIdChannelsRouteImport } from './routes/api/countries/$id/channels'
 import { Route as ApiCountriesIdRegionsRouteImport } from './routes/api/countries/$id/regions'
+import { Route as ApiPushSubscriptionsIdRouteImport } from './routes/api/push/subscriptions/$id'
 import { Route as ApiUsersIdAccessRouteImport } from './routes/api/users/$id/access'
 import { Route as ApiUsersIdResetPasswordRouteImport } from './routes/api/users/$id/reset-password'
 
@@ -46,6 +53,11 @@ const ProtectedRoute = ProtectedRouteImport.update({
   id: '/_protected',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -54,6 +66,11 @@ const LoginRoute = LoginRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestsRoute = RequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -74,6 +91,11 @@ const ApiCountriesRoute = ApiCountriesRouteImport.update({
 const ApiCredentialsRoute = ApiCredentialsRouteImport.update({
   id: '/api/credentials',
   path: '/api/credentials',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFeedRoute = ApiFeedRouteImport.update({
+  id: '/api/feed',
+  path: '/api/feed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -121,6 +143,21 @@ const ApiCredentialsIdRoute = ApiCredentialsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiCredentialsRoute,
 } as any)
+const ApiPushSubscribeRoute = ApiPushSubscribeRouteImport.update({
+  id: '/api/push/subscribe',
+  path: '/api/push/subscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPushSubscriptionsRoute = ApiPushSubscriptionsRouteImport.update({
+  id: '/api/push/subscriptions',
+  path: '/api/push/subscriptions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPushVapidPublicKeyRoute = ApiPushVapidPublicKeyRouteImport.update({
+  id: '/api/push/vapid-public-key',
+  path: '/api/push/vapid-public-key',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiRegionsIdRoute = ApiRegionsIdRouteImport.update({
   id: '/api/regions/$id',
   path: '/api/regions/$id',
@@ -161,6 +198,11 @@ const ApiCountriesIdRegionsRoute = ApiCountriesIdRegionsRouteImport.update({
   path: '/regions',
   getParentRoute: () => ApiCountriesIdRoute,
 } as any)
+const ApiPushSubscriptionsIdRoute = ApiPushSubscriptionsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiPushSubscriptionsRoute,
+} as any)
 const ApiUsersIdAccessRoute = ApiUsersIdAccessRouteImport.update({
   id: '/$id/access',
   path: '/$id/access',
@@ -174,12 +216,15 @@ const ApiUsersIdResetPasswordRoute = ApiUsersIdResetPasswordRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin': typeof ProtectedAdminRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
+  '/api/feed': typeof ApiFeedRoute
   '/api/health': typeof ApiHealthRoute
   '/api/me': typeof ApiMeRoute
   '/api/requests': typeof ApiRequestsRouteWithChildren
@@ -189,6 +234,9 @@ export interface FileRoutesByFullPath {
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
+  '/api/push/subscriptions': typeof ApiPushSubscriptionsRouteWithChildren
+  '/api/push/vapid-public-key': typeof ApiPushVapidPublicKeyRoute
   '/api/regions/$id': typeof ApiRegionsIdRoute
   '/api/reports/by-user': typeof ApiReportsByUserRoute
   '/api/requests/$id': typeof ApiRequestsIdRoute
@@ -197,17 +245,21 @@ export interface FileRoutesByFullPath {
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
   '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
+  '/api/push/subscriptions/$id': typeof ApiPushSubscriptionsIdRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin': typeof ProtectedAdminRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
+  '/api/feed': typeof ApiFeedRoute
   '/api/health': typeof ApiHealthRoute
   '/api/me': typeof ApiMeRoute
   '/api/requests': typeof ApiRequestsRouteWithChildren
@@ -217,6 +269,9 @@ export interface FileRoutesByTo {
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
+  '/api/push/subscriptions': typeof ApiPushSubscriptionsRouteWithChildren
+  '/api/push/vapid-public-key': typeof ApiPushVapidPublicKeyRoute
   '/api/regions/$id': typeof ApiRegionsIdRoute
   '/api/reports/by-user': typeof ApiReportsByUserRoute
   '/api/requests/$id': typeof ApiRequestsIdRoute
@@ -225,6 +280,7 @@ export interface FileRoutesByTo {
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
   '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
+  '/api/push/subscriptions/$id': typeof ApiPushSubscriptionsIdRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
 }
@@ -232,12 +288,15 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_protected': typeof ProtectedRouteWithChildren
+  '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_protected/admin': typeof ProtectedAdminRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
+  '/api/feed': typeof ApiFeedRoute
   '/api/health': typeof ApiHealthRoute
   '/api/me': typeof ApiMeRoute
   '/api/requests': typeof ApiRequestsRouteWithChildren
@@ -247,6 +306,9 @@ export interface FileRoutesById {
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
+  '/api/push/subscriptions': typeof ApiPushSubscriptionsRouteWithChildren
+  '/api/push/vapid-public-key': typeof ApiPushVapidPublicKeyRoute
   '/api/regions/$id': typeof ApiRegionsIdRoute
   '/api/reports/by-user': typeof ApiReportsByUserRoute
   '/api/requests/$id': typeof ApiRequestsIdRoute
@@ -255,6 +317,7 @@ export interface FileRoutesById {
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
   '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
+  '/api/push/subscriptions/$id': typeof ApiPushSubscriptionsIdRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
 }
@@ -262,12 +325,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/help'
     | '/login'
     | '/reports'
+    | '/requests'
     | '/reset-password'
     | '/admin'
     | '/api/countries'
     | '/api/credentials'
+    | '/api/feed'
     | '/api/health'
     | '/api/me'
     | '/api/requests'
@@ -277,6 +343,9 @@ export interface FileRouteTypes {
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
+    | '/api/push/subscribe'
+    | '/api/push/subscriptions'
+    | '/api/push/vapid-public-key'
     | '/api/regions/$id'
     | '/api/reports/by-user'
     | '/api/requests/$id'
@@ -285,17 +354,21 @@ export interface FileRouteTypes {
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
     | '/api/countries/$id/regions'
+    | '/api/push/subscriptions/$id'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/help'
     | '/login'
     | '/reports'
+    | '/requests'
     | '/reset-password'
     | '/admin'
     | '/api/countries'
     | '/api/credentials'
+    | '/api/feed'
     | '/api/health'
     | '/api/me'
     | '/api/requests'
@@ -305,6 +378,9 @@ export interface FileRouteTypes {
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
+    | '/api/push/subscribe'
+    | '/api/push/subscriptions'
+    | '/api/push/vapid-public-key'
     | '/api/regions/$id'
     | '/api/reports/by-user'
     | '/api/requests/$id'
@@ -313,18 +389,22 @@ export interface FileRouteTypes {
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
     | '/api/countries/$id/regions'
+    | '/api/push/subscriptions/$id'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
   id:
     | '__root__'
     | '/'
     | '/_protected'
+    | '/help'
     | '/login'
     | '/reports'
+    | '/requests'
     | '/reset-password'
     | '/_protected/admin'
     | '/api/countries'
     | '/api/credentials'
+    | '/api/feed'
     | '/api/health'
     | '/api/me'
     | '/api/requests'
@@ -334,6 +414,9 @@ export interface FileRouteTypes {
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
+    | '/api/push/subscribe'
+    | '/api/push/subscriptions'
+    | '/api/push/vapid-public-key'
     | '/api/regions/$id'
     | '/api/reports/by-user'
     | '/api/requests/$id'
@@ -342,6 +425,7 @@ export interface FileRouteTypes {
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
     | '/api/countries/$id/regions'
+    | '/api/push/subscriptions/$id'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
   fileRoutesById: FileRoutesById
@@ -349,11 +433,14 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProtectedRoute: typeof ProtectedRouteWithChildren
+  HelpRoute: typeof HelpRoute
   LoginRoute: typeof LoginRoute
   ReportsRoute: typeof ReportsRoute
+  RequestsRoute: typeof RequestsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiCountriesRoute: typeof ApiCountriesRouteWithChildren
   ApiCredentialsRoute: typeof ApiCredentialsRouteWithChildren
+  ApiFeedRoute: typeof ApiFeedRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiMeRoute: typeof ApiMeRoute
   ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
@@ -361,6 +448,9 @@ export interface RootRouteChildren {
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChannelsIdRoute: typeof ApiChannelsIdRouteWithChildren
+  ApiPushSubscribeRoute: typeof ApiPushSubscribeRoute
+  ApiPushSubscriptionsRoute: typeof ApiPushSubscriptionsRouteWithChildren
+  ApiPushVapidPublicKeyRoute: typeof ApiPushVapidPublicKeyRoute
   ApiRegionsIdRoute: typeof ApiRegionsIdRoute
   ApiReportsByUserRoute: typeof ApiReportsByUserRoute
 }
@@ -381,6 +471,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -393,6 +490,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requests': {
+      id: '/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof RequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -421,6 +525,13 @@ declare module '@tanstack/react-router' {
       path: '/api/credentials'
       fullPath: '/api/credentials'
       preLoaderRoute: typeof ApiCredentialsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/feed': {
+      id: '/api/feed'
+      path: '/api/feed'
+      fullPath: '/api/feed'
+      preLoaderRoute: typeof ApiFeedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/health': {
@@ -486,6 +597,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCredentialsIdRouteImport
       parentRoute: typeof ApiCredentialsRoute
     }
+    '/api/push/subscribe': {
+      id: '/api/push/subscribe'
+      path: '/api/push/subscribe'
+      fullPath: '/api/push/subscribe'
+      preLoaderRoute: typeof ApiPushSubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/push/subscriptions': {
+      id: '/api/push/subscriptions'
+      path: '/api/push/subscriptions'
+      fullPath: '/api/push/subscriptions'
+      preLoaderRoute: typeof ApiPushSubscriptionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/push/vapid-public-key': {
+      id: '/api/push/vapid-public-key'
+      path: '/api/push/vapid-public-key'
+      fullPath: '/api/push/vapid-public-key'
+      preLoaderRoute: typeof ApiPushVapidPublicKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/regions/$id': {
       id: '/api/regions/$id'
       path: '/api/regions/$id'
@@ -541,6 +673,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/countries/$id/regions'
       preLoaderRoute: typeof ApiCountriesIdRegionsRouteImport
       parentRoute: typeof ApiCountriesIdRoute
+    }
+    '/api/push/subscriptions/$id': {
+      id: '/api/push/subscriptions/$id'
+      path: '/$id'
+      fullPath: '/api/push/subscriptions/$id'
+      preLoaderRoute: typeof ApiPushSubscriptionsIdRouteImport
+      parentRoute: typeof ApiPushSubscriptionsRoute
     }
     '/api/users/$id/access': {
       id: '/api/users/$id/access'
@@ -661,14 +800,28 @@ const ApiChannelsIdRouteWithChildren = ApiChannelsIdRoute._addFileChildren(
   ApiChannelsIdRouteChildren,
 )
 
+interface ApiPushSubscriptionsRouteChildren {
+  ApiPushSubscriptionsIdRoute: typeof ApiPushSubscriptionsIdRoute
+}
+
+const ApiPushSubscriptionsRouteChildren: ApiPushSubscriptionsRouteChildren = {
+  ApiPushSubscriptionsIdRoute: ApiPushSubscriptionsIdRoute,
+}
+
+const ApiPushSubscriptionsRouteWithChildren =
+  ApiPushSubscriptionsRoute._addFileChildren(ApiPushSubscriptionsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProtectedRoute: ProtectedRouteWithChildren,
+  HelpRoute: HelpRoute,
   LoginRoute: LoginRoute,
   ReportsRoute: ReportsRoute,
+  RequestsRoute: RequestsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ApiCountriesRoute: ApiCountriesRouteWithChildren,
   ApiCredentialsRoute: ApiCredentialsRouteWithChildren,
+  ApiFeedRoute: ApiFeedRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiMeRoute: ApiMeRoute,
   ApiRequestsRoute: ApiRequestsRouteWithChildren,
@@ -676,6 +829,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUsersRoute: ApiUsersRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChannelsIdRoute: ApiChannelsIdRouteWithChildren,
+  ApiPushSubscribeRoute: ApiPushSubscribeRoute,
+  ApiPushSubscriptionsRoute: ApiPushSubscriptionsRouteWithChildren,
+  ApiPushVapidPublicKeyRoute: ApiPushVapidPublicKeyRoute,
   ApiRegionsIdRoute: ApiRegionsIdRoute,
   ApiReportsByUserRoute: ApiReportsByUserRoute,
 }
