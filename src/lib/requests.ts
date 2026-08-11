@@ -4,6 +4,11 @@ import { json, err } from './http'
 import { fireNotifications, type RequestRow } from './notifications'
 import { canAccessCountry, countryScopeSQL, type UserAccess } from './access'
 
+// Request types where lock_level is meaningful: downlocks target a locked segment, and
+// accept/decline PUR requests target a locked place — both need the lock rank to route the
+// notification to an editor whose rank covers it. Imagery requests carry no lock level.
+const LOCK_GATED_TYPES = new Set<RequestType>(['downlock', 'accept_pur', 'decline_pur'])
+
 interface RequestWithCountry extends RequestRow {
   status: Status
   country_name: string
@@ -99,8 +104,8 @@ export async function createRequest(body: CreateRequestBody) {
   if (!permalink?.trim()) return err('permalink is required')
   if (lock_level != null && (lock_level < 1 || lock_level > 7)) return err('lock_level must be between 1 and 7')
   if (editor_rank != null && (editor_rank < 1 || editor_rank > 6)) return err('editor_rank must be between 1 and 6')
-  if (type === 'downlock' && lock_level != null && editor_rank != null && editor_rank >= lock_level) {
-    return err("Your editor rank already covers this segment's lock level; no downlock request needed.")
+  if (LOCK_GATED_TYPES.has(type) && lock_level != null && editor_rank != null && editor_rank >= lock_level) {
+    return err("Your editor rank already covers this lock level; no request needed.")
   }
 
   const country = await dbFirst<{ id: number; name: string; code: string }>('SELECT * FROM countries WHERE id = ?', [
@@ -114,7 +119,7 @@ export async function createRequest(body: CreateRequestBody) {
     if (!region) return err('Region not found for this country', 404)
   }
 
-  const effectiveLock = type === 'downlock' ? (lock_level ?? null) : null
+  const effectiveLock = LOCK_GATED_TYPES.has(type) ? (lock_level ?? null) : null
 
   const result = await dbRun(
     `INSERT INTO requests (country_id, region_id, type, permalink, lock_level, editor_rank, notes, submitted_by, screenshot_key)

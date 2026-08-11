@@ -12,17 +12,41 @@ import {
   FileSpreadsheet,
   Radio,
   Server,
+  CircleCheck,
+  CircleX,
 } from 'lucide-react'
 import type { CredentialType, EventType, Platform, RequestType, Status } from './types'
 
+export const TYPE_LABELS: Record<RequestType, string> = {
+  downlock: 'Downlock',
+  imagery: 'Imagery',
+  accept_pur: 'Accept PUR',
+  decline_pur: 'Decline PUR',
+}
+
+export const TYPE_COLORS: Record<RequestType, string> = {
+  downlock: 'red',
+  imagery: 'blue',
+  accept_pur: 'green',
+  decline_pur: 'orange',
+}
+
+// Client-safe list of request types, in display order — src/lib/db.ts can't be imported from
+// route components since it pulls in the `cloudflare:workers` server-only module.
+export const REQUEST_TYPE_LIST = Object.keys(TYPE_LABELS) as RequestType[]
+
+const TYPE_ICONS: Record<RequestType, typeof Lock> = {
+  downlock: Lock,
+  imagery: Image,
+  accept_pur: CircleCheck,
+  decline_pur: CircleX,
+}
+
 export function TypeBadge({ type }: Readonly<{ type: RequestType }>) {
-  return type === 'downlock' ? (
-    <Badge color="red" variant="light" leftSection={<Lock size={12} />}>
-      Downlock
-    </Badge>
-  ) : (
-    <Badge color="blue" variant="light" leftSection={<Image size={12} />}>
-      Imagery
+  const Icon = TYPE_ICONS[type]
+  return (
+    <Badge color={TYPE_COLORS[type]} variant="light" leftSection={<Icon size={12} />}>
+      {TYPE_LABELS[type]}
     </Badge>
   )
 }
@@ -96,12 +120,16 @@ const EVENT_TYPE_ICONS: Record<EventType, typeof Globe> = {
   global: Globe,
   downlock: Lock,
   imagery: Image,
+  accept_pur: CircleCheck,
+  decline_pur: CircleX,
 }
 
 const EVENT_TYPE_LABELS: Record<EventType, string> = {
   global: 'Global',
   downlock: 'Downlock only',
   imagery: 'Imagery only',
+  accept_pur: 'Accept PUR only',
+  decline_pur: 'Decline PUR only',
 }
 
 export function EventTypeBadge({ eventType }: Readonly<{ eventType: EventType }>) {

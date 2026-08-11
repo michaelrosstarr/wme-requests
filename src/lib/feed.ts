@@ -20,8 +20,15 @@ function rfc822(iso: string) {
   return new Date(iso).toUTCString()
 }
 
+const TYPE_LABELS: Record<RequestType, string> = {
+  downlock: 'Downlock',
+  imagery: 'Imagery',
+  accept_pur: 'Accept PUR',
+  decline_pur: 'Decline PUR',
+}
+
 function typeLabel(type: RequestType) {
-  return type === 'downlock' ? 'Downlock' : 'Imagery'
+  return TYPE_LABELS[type]
 }
 
 // A read-only RSS 2.0 feed of recent requests — the pull-based counterpart to notification

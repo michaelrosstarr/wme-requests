@@ -1,10 +1,14 @@
-import { dbAll, dbRun } from './db'
+import { dbAll, dbRun, type RequestType } from './db'
 import { appendSheetRow } from './google-sheets'
 import { screenshotUrl } from './screenshots'
 import { resolveGoogleCredential, resolveEmailCredential } from './credentials'
 import { sendEmail as dispatchEmail } from './email/send-email'
 import { sendPush } from './push'
 import { audiencePushSubscriptions, deleteSubscriptionById, type PushSubscriptionRow } from './subscriptions'
+
+// Same as LOCK_GATED_TYPES in ./requests — downlock and PUR requests carry a lock level,
+// imagery requests don't.
+const LOCK_GATED_TYPES = new Set<RequestType>(['downlock', 'accept_pur', 'decline_pur'])
 
 export interface NotificationChannel {
   id: number
@@ -22,7 +26,7 @@ export interface NotificationChannel {
     | 'google_chat'
     | 'ntfy'
     | 'gotify'
-  event_type: 'global' | 'downlock' | 'imagery'
+  event_type: 'global' | RequestType
   webhook_url: string | null
   bot_token: string | null
   chat_id: string | null
@@ -42,7 +46,7 @@ export interface RequestRow {
   id: number
   country_id: number
   region_id: number | null
-  type: 'downlock' | 'imagery'
+  type: RequestType
   permalink: string
   lock_level: number | null
   editor_rank: number | null
@@ -62,16 +66,22 @@ function applyPrefixTemplate(template: string, vars: PrefixVars) {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => vars[key] ?? match)
 }
 
+const TYPE_META: Record<RequestType, { label: string; color: number }> = {
+  downlock: { label: 'Downlock Request', color: 0xe74c3c },
+  imagery: { label: 'Imagery Request', color: 0x3498db },
+  accept_pur: { label: 'Accept PUR Request', color: 0x2ecc71 },
+  decline_pur: { label: 'Decline PUR Request', color: 0xf39c12 },
+}
+
 function buildMessage(request: RequestRow, countryName: string, regionName: string | null) {
-  const typeLabel = request.type === 'downlock' ? 'Downlock Request' : 'Imagery Request'
+  const meta = TYPE_META[request.type]
   const place = regionName ? `${regionName}, ${countryName}` : countryName
-  const title = `${typeLabel} — ${place}`
-  const color = request.type === 'downlock' ? 0xe74c3c : 0x3498db
+  const title = `${meta.label} — ${place}`
   return {
     title,
-    color,
+    color: meta.color,
     permalink: request.permalink,
-    lockLevel: request.type === 'downlock' ? request.lock_level : null,
+    lockLevel: LOCK_GATED_TYPES.has(request.type) ? request.lock_level : null,
     notes: request.notes,
     submittedBy: request.submitted_by,
     editorRank: request.editor_rank,
@@ -444,7 +454,7 @@ async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typ
 // Region-scoped channels take priority: if the request's region has any channels matching
 // this event type, only those fire. Otherwise (no region, or the region has none configured)
 // falls back to the country's own (region_id IS NULL) channels — see migrations/0011_regions.sql.
-async function audienceChannels(countryId: number, regionId: number | null, requestType: 'downlock' | 'imagery') {
+async function audienceChannels(countryId: number, regionId: number | null, requestType: RequestType) {
   if (regionId) {
     const regionChannels = await dbAll<NotificationChannel>(
       `SELECT * FROM notification_channels WHERE region_id = ? AND event_type IN ('global', ?)`,

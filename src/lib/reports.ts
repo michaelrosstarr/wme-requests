@@ -1,10 +1,11 @@
-import { dbAll, type RequestType } from './db'
+import { dbAll, REQUEST_TYPES, type RequestType } from './db'
 import { json } from './http'
 import { countryScopeSQL, type UserAccess } from './access'
 
-interface UserCounts {
-  downlock: number
-  imagery: number
+type UserCounts = Record<RequestType, number>
+
+function emptyCounts(): UserCounts {
+  return Object.fromEntries(REQUEST_TYPES.map((t) => [t, 0])) as UserCounts
 }
 
 // `access` is null for anonymous (public, view-only) callers — see getRequests in
@@ -27,20 +28,20 @@ export async function getUserReport(access: UserAccess | null) {
 
   const byUser = new Map<string, UserCounts>()
   for (const row of rows) {
-    const entry = byUser.get(row.submitted_by) ?? { downlock: 0, imagery: 0 }
+    const entry = byUser.get(row.submitted_by) ?? emptyCounts()
     entry[row.type] = row.count
     byUser.set(row.submitted_by, entry)
   }
 
   const data = [...byUser.entries()]
     .map(([submittedBy, counts]) => {
-      const total = counts.downlock + counts.imagery
-      const majorityType: RequestType | 'tie' =
-        counts.downlock === counts.imagery ? 'tie' : counts.downlock > counts.imagery ? 'downlock' : 'imagery'
+      const total = REQUEST_TYPES.reduce((sum, t) => sum + counts[t], 0)
+      const max = Math.max(...REQUEST_TYPES.map((t) => counts[t]))
+      const topTypes = REQUEST_TYPES.filter((t) => counts[t] === max)
+      const majorityType: RequestType | 'tie' = max === 0 || topTypes.length > 1 ? 'tie' : topTypes[0]
       return {
         submitted_by: submittedBy,
-        downlock_count: counts.downlock,
-        imagery_count: counts.imagery,
+        counts,
         total,
         majority_type: majorityType,
       }

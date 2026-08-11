@@ -30,6 +30,8 @@ const EVENT_TYPE_OPTIONS = [
   { value: 'global', label: 'Global (all requests)' },
   { value: 'downlock', label: 'Downlock only' },
   { value: 'imagery', label: 'Imagery only' },
+  { value: 'accept_pur', label: 'Accept PUR only' },
+  { value: 'decline_pur', label: 'Decline PUR only' },
 ]
 
 const EMPTY_VALUES: ChannelFormValues = {

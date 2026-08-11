@@ -216,7 +216,7 @@ function Admin() {
                   <Table.Td>
                     <code>{'{lock_level}'}</code>
                   </Table.Td>
-                  <Table.Td>Request's lock level (empty for imagery)</Table.Td>
+                  <Table.Td>Request's lock level (set for downlock and PUR requests; empty for imagery)</Table.Td>
                 </Table.Tr>
                 <Table.Tr>
                   <Table.Td>
@@ -252,7 +252,7 @@ function Admin() {
                   <Table.Td>
                     <code>{'{type}'}</code>
                   </Table.Td>
-                  <Table.Td>downlock or imagery</Table.Td>
+                  <Table.Td>downlock, imagery, accept_pur, or decline_pur</Table.Td>
                 </Table.Tr>
                 <Table.Tr>
                   <Table.Td>

@@ -87,8 +87,8 @@ const NOTIFICATION_METHODS = [
 const FEATURES = [
   {
     icon: Lock,
-    title: 'Downlocks & Imagery',
-    description: 'Purpose-built for the two most common Waze Map Editor escalation types.',
+    title: 'Downlocks, Imagery & PUR',
+    description: 'Purpose-built for the most common Waze Map Editor escalation types, including place update accept/decline.',
   },
   {
     icon: MapPinned,
@@ -115,7 +115,7 @@ function Landing() {
     <Container size="lg" pb={80}>
       <Stack align="center" ta="center" gap="md" py={{ base: 40, sm: 64 }}>
         <Title order={1} fz={{ base: 32, sm: 44 }} maw={720}>
-          Downlock &amp; imagery requests, tracked and delivered where you already work
+          Downlock, imagery &amp; place update requests, tracked and delivered where you already work
         </Title>
         <Text size="lg" c="dimmed" maw={640}>
           A shared queue for Waze Map Editor requests, submitted straight from WME via a userscript, and pushed out

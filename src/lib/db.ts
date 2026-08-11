@@ -29,8 +29,8 @@ export const PLATFORMS = [
   'ntfy',
   'gotify',
 ] as const
-export const EVENT_TYPES = ['global', 'downlock', 'imagery'] as const
-export const REQUEST_TYPES = ['downlock', 'imagery'] as const
+export const EVENT_TYPES = ['global', 'downlock', 'imagery', 'accept_pur', 'decline_pur'] as const
+export const REQUEST_TYPES = ['downlock', 'imagery', 'accept_pur', 'decline_pur'] as const
 export const STATUSES = ['pending', 'in_progress', 'completed', 'rejected'] as const
 export const CREDENTIAL_TYPES = [
   'google_service_account',

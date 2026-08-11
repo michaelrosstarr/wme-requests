@@ -42,6 +42,8 @@ const PAGE_SIZE = 50
 const TYPE_OPTIONS = [
   { value: 'downlock', label: 'Downlock' },
   { value: 'imagery', label: 'Imagery' },
+  { value: 'accept_pur', label: 'Accept PUR' },
+  { value: 'decline_pur', label: 'Decline PUR' },
 ]
 
 function Dashboard() {

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.3.0
-// @description  Send downlock and imagery requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
+// @version      2.7.1
+// @description  Send downlock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -37,6 +37,8 @@
   // 'full' (text only), 'compact' (icon + text), or 'icon' (icon only) — style of the
   // always-visible floating Downlock/Imagery buttons. See applyFabStyle().
   let fabStyle = GM_getValue('fabStyle', 'full');
+  // Per-button show/hide for the floating action buttons — see applyFabVisibility().
+  let fabVisible = loadFabVisible();
   let countries = [];
   // Regions (states/provinces) of whichever country is currently selected — refetched
   // whenever that changes. Optional: a country with none configured just has an empty list.
@@ -48,9 +50,20 @@
   let sdk = null;
   let getSelectionFn = null;
   let getSegmentByIdFn = null;
+  let getMapCommentByIdFn = null;
+  let getVenueByIdFn = null;
   let getSegmentAddressFn = null;
   let getTopCountryFn = null;
   let getTopStateFn = null;
+
+  const LOCK_GATED_TYPES = ['downlock', 'accept_pur', 'decline_pur'];
+
+  const TYPE_ENTITY_KINDS = {
+    downlock: ['segment'],
+    imagery: ['segment', 'mapComment'],
+    accept_pur: ['venue'],
+    decline_pur: ['venue'],
+  };
 
   // ── Bootstrap ───────────────────────────────────────────────────────────────
   function bootstrap() {
@@ -69,17 +82,10 @@
     log('Initialising…');
     injectStyles();
     createPanel();
-    // Debounced: WME can fire this event in rapid bursts (e.g. drag-selecting many
-    // segments), and the handler does synchronous SDK calls plus a region fetch —
-    // coalescing bursts into one update avoids visible editor jank.
+
     sdk.Events.on({ eventName: 'wme-selection-changed', eventHandler: debounce(onSelectionChanged, 150) });
-    // Keeps Country/Region in sync with wherever the Wazer pans/zooms to, not just
-    // when a segment is selected — same detection path (applyAutoCountry chains into
-    // fetchRegions → applyAutoRegion), just triggered by map movement. Event name
-    // isn't confirmed by the public docs (same caveat as getTopState — see
-    // resolveSdkMethods) so onMapMoveEnd logs on every fire when DEBUG is on, making
-    // a silent no-op (wrong event name) diagnosable from the console.
     sdk.Events.on({ eventName: 'wme-map-move-end', eventHandler: debounce(onMapMoveEnd, 150) });
+
     log('Ready.');
   }
 
@@ -97,9 +103,6 @@
     };
   }
 
-  // Finds the current SDK method name for things the docs describe but don't give
-  // an exact signature for. Logs available method names when nothing matches, so
-  // a mismatch is diagnosable from the console instead of failing silently.
   function sdkMethodOf(obj, candidates, label) {
     if (!obj) {
       log(`${label}: parent object is missing from the SDK.`);
@@ -120,19 +123,14 @@
       'Editing selection getter',
     );
     getSegmentByIdFn = sdkMethodOf(sdk.DataModel?.Segments, ['getById'], 'DataModel.Segments.getById');
-    // Not confirmed by the public docs either — the BaseAddress/SegmentAddress
-    // interfaces are documented (with .country/.state fields), but not which method
-    // returns one for a given segment. If none of these candidates exist, sdkMethodOf
-    // logs every real method available on DataModel.Segments, which is how to find
-    // the actual name to add here.
+    getMapCommentByIdFn = sdkMethodOf(sdk.DataModel?.MapComments, ['getById'], 'DataModel.MapComments.getById');
+    getVenueByIdFn = sdkMethodOf(sdk.DataModel?.Venues, ['getById'], 'DataModel.Venues.getById');
     getSegmentAddressFn = sdkMethodOf(
       sdk.DataModel?.Segments,
       ['getAddress', 'getSegmentAddress', 'getAddressForSegment'],
       'DataModel.Segments.getAddress',
     );
     getTopCountryFn = sdkMethodOf(sdk.DataModel?.Countries, ['getTopCountry'], 'DataModel.Countries.getTopCountry');
-    // Not confirmed by the public SDK docs at all — probed the same way as getTopCountry.
-    // If none of these exist, region auto-detect silently falls back to manual selection.
     getTopStateFn = sdkMethodOf(sdk.DataModel?.States, ['getTopState', 'getTopStateId'], 'DataModel.States.getTopState');
   }
 
@@ -171,6 +169,10 @@
       .wmereq-btn-downlock:hover { background: #c62828; }
       .wmereq-btn-imagery  { background: #0a8cff; color: #fff; }
       .wmereq-btn-imagery:hover  { background: #0077e6; }
+      .wmereq-btn-accept-pur { background: #2ecc71; color: #fff; }
+      .wmereq-btn-accept-pur:hover { background: #27ae60; }
+      .wmereq-btn-decline-pur { background: #f39c12; color: #fff; }
+      .wmereq-btn-decline-pur:hover { background: #d98408; }
       .wmereq-btn-cancel   { background: #e4e7eb; color: #333; }
       .wmereq-btn-cancel:hover   { background: #d4d8dc; }
       #${PANEL_ID} .wmereq-status { font-size: 11px; margin-top: 6px; padding: 5px 8px; border-radius: 4px; }
@@ -230,6 +232,8 @@
       #wmereq-floating-actions .wmereq-fab:disabled { opacity: .5; cursor: default; }
       #wmereq-floating-actions .wmereq-fab-downlock { background: #e53935; }
       #wmereq-floating-actions .wmereq-fab-imagery  { background: #0a8cff; }
+      #wmereq-floating-actions .wmereq-fab-accept-pur  { background: #2ecc71; }
+      #wmereq-floating-actions .wmereq-fab-decline-pur { background: #f39c12; }
       #wmereq-floating-actions .wmereq-fab-icon { display: none; font-size: 13px; line-height: 1; }
       /* Icon + text mode: shows the icon alongside the (already small) label. */
       #wmereq-floating-actions.wmereq-fab-compact .wmereq-fab-icon { display: inline; }
@@ -254,10 +258,6 @@
   function createPanel() {
     if (byId(PANEL_ID)) return;
 
-    // These selectors matched WME's old Bootstrap-based sidebar markup. The
-    // current WME UI is a different (React) build and likely won't match them,
-    // in which case we fall back to the floating panel below — which doesn't
-    // depend on WME's internal DOM structure at all.
     const tabsUl = document.querySelector('#user-info .nav-tabs') || document.querySelector('#sidebar .nav-tabs');
     const tabContent = document.querySelector('#user-info .tab-content') || document.querySelector('#sidebar .tab-content');
 
@@ -272,8 +272,6 @@
     fetchCountries();
   }
 
-  // Adds a tab alongside WME's own sidebar tabs (Layers, My Waze, etc.),
-  // using the same Bootstrap nav-tabs/tab-pane markup WME's own UI relies on.
   function injectAsNativeTab(tabsUl, tabContent) {
     const li = document.createElement('li');
     li.innerHTML = `<a href="#${PANEL_ID}" data-toggle="tab">WR</a>`;
@@ -286,7 +284,6 @@
     tabContent.appendChild(pane);
   }
 
-  // Fallback used if WME's sidebar tab markup can't be found.
   function injectAsFloatingPanel() {
     const wrapper = document.createElement('div');
     wrapper.id = PANEL_ID;
@@ -296,7 +293,6 @@
     on('wmereq-btn-close', 'click', () => { wrapper.style.display = 'none'; });
   }
 
-  // Always-visible quick-action buttons for submitting a request without opening the panel.
   function createFloatingActions() {
     if (byId('wmereq-floating-actions')) return;
     const wrap = document.createElement('div');
@@ -305,17 +301,20 @@
       <div class="wmereq-fab-handle" title="Drag to move">⠿ ⠿ ⠿</div>
       <div id="wmereq-fab-status" class="wmereq-fab-status" style="display:none"></div>
       <button class="wmereq-fab wmereq-fab-downlock" id="wmereq-fab-downlock" title="Submit a downlock request for the selected segment"><span class="wmereq-fab-icon">🔒</span><span class="wmereq-fab-label">Downlock</span></button>
-      <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment"><span class="wmereq-fab-icon">📷</span><span class="wmereq-fab-label">Imagery</span></button>
+      <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment or map note"><span class="wmereq-fab-icon">📷</span><span class="wmereq-fab-label">Imagery</span></button>
+      <button class="wmereq-fab wmereq-fab-accept-pur" id="wmereq-fab-accept-pur" title="Submit an Accept PUR request for the selected place"><span class="wmereq-fab-icon">✅</span><span class="wmereq-fab-label">Accept PUR</span></button>
+      <button class="wmereq-fab wmereq-fab-decline-pur" id="wmereq-fab-decline-pur" title="Submit a Decline PUR request for the selected place"><span class="wmereq-fab-icon">🚫</span><span class="wmereq-fab-label">Decline PUR</span></button>
     `;
     document.body.appendChild(wrap);
     on('wmereq-fab-downlock', 'click', () => quickSubmit('downlock'));
     on('wmereq-fab-imagery', 'click', () => quickSubmit('imagery'));
+    on('wmereq-fab-accept-pur', 'click', () => quickSubmit('accept_pur'));
+    on('wmereq-fab-decline-pur', 'click', () => quickSubmit('decline_pur'));
     makeDraggable(wrap, wrap.querySelector('.wmereq-fab-handle'), 'wmereq-fab-pos');
     applyFabStyle();
+    applyFabVisibility();
   }
 
-  // Toggles the floating buttons between text-only, icon + text, and icon-only —
-  // see the `fabStyle` setting, changeable from the settings dialog.
   function applyFabStyle() {
     const wrap = byId('wmereq-floating-actions');
     if (!wrap) return;
@@ -323,10 +322,40 @@
     wrap.classList.toggle('wmereq-fab-icon-only', fabStyle === 'icon');
   }
 
-  // Restores a persisted { top, left } position (if any) and lets the user drag the
-  // element via `handle`, saving the new position via GM_setValue so it survives reloads.
-  // Defaults to wherever the element's own CSS places it (top-right of the viewport)
-  // until the user drags it for the first time.
+  const FAB_TYPES = ['downlock', 'imagery', 'accept_pur', 'decline_pur'];
+
+  function loadFabVisible() {
+    const defaults = { downlock: true, imagery: true, accept_pur: true, decline_pur: true };
+    const saved = GM_getValue('wmereq-fab-visible', null);
+    if (!saved) return defaults;
+    try {
+      return { ...defaults, ...JSON.parse(saved) };
+    } catch (e) {
+      log('loadFabVisible: failed to parse saved visibility: ' + e.message);
+      return defaults;
+    }
+  }
+
+  function applyFabVisibility() {
+    const wrap = byId('wmereq-floating-actions');
+    if (!wrap) return;
+    for (const type of FAB_TYPES) {
+      const btn = byId(`wmereq-fab-${type.replace('_', '-')}`);
+      if (btn) btn.style.display = fabVisible[type] === false ? 'none' : '';
+    }
+  }
+
+  function resetFabPosition() {
+    GM_setValue('wmereq-fab-pos', null);
+    const wrap = byId('wmereq-floating-actions');
+    if (wrap) {
+      wrap.style.top = '';
+      wrap.style.left = '';
+      wrap.style.right = '';
+    }
+    showStatus('Button position reset.', 'ok');
+  }
+
   function makeDraggable(container, handle, storageKey) {
     const saved = GM_getValue(storageKey, null);
     if (saved) {
@@ -381,7 +410,7 @@
         <h3>WME Requests</h3>
 
         <div class="wmereq-section" id="wmereq-segment-info">
-          <div class="wmereq-hint">Select a segment on the map to get started.</div>
+          <div class="wmereq-hint">Select a segment, map note, or place on the map to get started.</div>
         </div>
 
         <div class="wmereq-section">
@@ -399,6 +428,8 @@
           <select id="wmereq-type">
             <option value="downlock">Downlock</option>
             <option value="imagery">Imagery</option>
+            <option value="accept_pur">Accept PUR</option>
+            <option value="decline_pur">Decline PUR</option>
           </select>
 
           <div id="wmereq-lock-row">
@@ -416,6 +447,8 @@
 
           <button class="wmereq-btn wmereq-btn-downlock" id="wmereq-btn-submit-downlock">Submit Downlock</button>
           <button class="wmereq-btn wmereq-btn-imagery"  id="wmereq-btn-submit-imagery">Submit Imagery</button>
+          <button class="wmereq-btn wmereq-btn-accept-pur" id="wmereq-btn-submit-accept-pur">Submit Accept PUR</button>
+          <button class="wmereq-btn wmereq-btn-decline-pur" id="wmereq-btn-submit-decline-pur">Submit Decline PUR</button>
 
           <div id="wmereq-status" class="wmereq-status info" style="display:none"></div>
         </div>
@@ -433,6 +466,17 @@
             <option value="icon" ${fabStyle === 'icon' ? 'selected' : ''}>Icon only</option>
           </select>
 
+          <label>Show on Map</label>
+          <div class="wmereq-fab-visibility">
+            ${FAB_TYPES.map((type) => `
+              <label style="display:flex;align-items:center;font-weight:400;margin-bottom:4px">
+                <input type="checkbox" id="wmereq-fab-visible-${type.replace('_', '-')}" style="width:auto;margin:0 6px 0 0" ${fabVisible[type] !== false ? 'checked' : ''} />
+                ${describeType(type)}
+              </label>`).join('')}
+          </div>
+
+          <button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-fab-reset-pos" style="width:100%;box-sizing:border-box;margin-bottom:8px">Reset Button Position</button>
+
           <button class="wmereq-btn wmereq-btn-primary" id="wmereq-settings-save">Save Settings</button>
         </div>
 
@@ -445,7 +489,10 @@
     on('wmereq-country', 'change', (e) => fetchRegions(e.target.value));
     on('wmereq-btn-submit-downlock', 'click', () => submitRequest('downlock'));
     on('wmereq-btn-submit-imagery', 'click', () => submitRequest('imagery'));
+    on('wmereq-btn-submit-accept-pur', 'click', () => submitRequest('accept_pur'));
+    on('wmereq-btn-submit-decline-pur', 'click', () => submitRequest('decline_pur'));
     on('wmereq-settings-save', 'click', saveSettings);
+    on('wmereq-fab-reset-pos', 'click', resetFabPosition);
     on('wmereq-btn-screenshot', 'click', handleScreenshotButtonClick);
   }
 
@@ -462,10 +509,6 @@
       !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   }
 
-  // Triggers the browser's native "Choose what to share" picker (unavoidable —
-  // there's no way to capture the screen without it), restricts the resulting
-  // stream to the map viewport element, grabs a single frame, and stops the
-  // stream immediately so the browser's "sharing" indicator goes away right away.
   async function captureViewportScreenshot() {
     const viewportEl = sdk.Map.getMapViewportElement();
     if (!viewportEl) throw new Error('Could not find the map viewport element.');
@@ -476,8 +519,6 @@
       const restrictionTarget = await RestrictionTarget.fromElement(viewportEl);
       await track.restrictTo(restrictionTarget);
 
-      // Give the restricted track a moment to start delivering viewport-cropped
-      // frames before grabbing one — the first frame or two can still be uncropped.
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       const imgCap = new ImageCapture(track);
@@ -520,33 +561,110 @@
   }
 
   // ── Selection helpers ─────────────────────────────────────────────────────────
-  // Normalizes whatever shape the SDK's selection getter returns into a plain
-  // array of segment ids. Handles a couple of plausible shapes defensively
-  // since the exact return type isn't nailed down in the public docs.
-  function normalizeSelectionIds(raw) {
-    if (!raw) return [];
+  function normalizeSelection(raw) {
+    if (!raw) return null;
     if (Array.isArray(raw.ids)) {
-      if (raw.objectType && raw.objectType !== 'segment') return [];
-      return raw.ids;
+      if (raw.objectType === 'mapComment') return { kind: 'mapComment', ids: raw.ids };
+      if (raw.objectType === 'venue') return { kind: 'venue', ids: raw.ids };
+      if (!raw.objectType || raw.objectType === 'segment') return { kind: 'segment', ids: raw.ids };
+      return null;
     }
-    if (Array.isArray(raw.segmentIds)) return raw.segmentIds;
+    if (Array.isArray(raw.segmentIds)) return { kind: 'segment', ids: raw.segmentIds };
     if (Array.isArray(raw)) {
-      return raw
+      const segIds = raw
         .filter((f) => (f.objectType || f.type) === 'segment' || f.segmentId != null)
         .map((f) => f.id ?? f.segmentId);
+      if (segIds.length) return { kind: 'segment', ids: segIds };
+      const noteIds = raw.filter((f) => (f.objectType || f.type) === 'mapComment').map((f) => f.id);
+      if (noteIds.length) return { kind: 'mapComment', ids: noteIds };
+      const venueIds = raw.filter((f) => (f.objectType || f.type) === 'venue').map((f) => f.id);
+      if (venueIds.length) return { kind: 'venue', ids: venueIds };
     }
-    return [];
+    return null;
+  }
+
+  function getSelectedEntity() {
+    return getSelectedEntityFromSdk() || getVenueEntityFromIssueTracker() || getVenueEntityFromUrl();
+  }
+
+  // Fallback for when a Wazer opens a place's "Place update request" popup
+  // (WME's own suggested-edits review UI) without separately clicking to select
+  // the venue on the map — WME doesn't register that popup as an SDK-level or
+  // legacy selection (both come back empty), so getSelectedEntityFromSdk() finds
+  // nothing even though the venue is clearly the one on screen. Its id is still
+  // readable off WME's own legacy issue-tracker state though: opening the popup
+  // pushes a `<venueId>.<suggestionId>.<subId>` composite id onto
+  // window.W.issueTrackerController.app.selectedMarkers, so this reads the venue
+  // id (the part before the first dot) back out of it and resolves the venue
+  // directly — letting Accept/Decline PUR work from that popup with no extra
+  // click. `window.W` is WME's pre-SDK global app object; still present
+  // alongside the new SDK and is the only place this particular state lives.
+  function getVenueEntityFromIssueTracker() {
+    if (!getVenueByIdFn) { log('getVenueEntityFromIssueTracker: no getVenueByIdFn resolved.'); return null; }
+    try {
+      const markers = pageWindow.W?.issueTrackerController?.app?.selectedMarkers;
+      const raw = Array.isArray(markers) ? markers[0] : null;
+      const venueId = raw ? Number(String(raw).split('.')[0]) : null;
+      log(`getVenueEntityFromIssueTracker: selectedMarkers = ${JSON.stringify(markers)}, parsed venueId = ${venueId}`);
+      if (!venueId) return null;
+      const venue = getVenueByIdFn({ venueId });
+      log(`getVenueEntityFromIssueTracker: getVenueByIdFn({ venueId: ${venueId} }) = ${venue ? JSON.stringify(venue) : 'nothing'}`);
+      return venue ? { kind: 'venue', items: [venue] } : null;
+    } catch (e) {
+      log('getVenueEntityFromIssueTracker failed: ' + e.message);
+      return null;
+    }
+  }
+
+  function getSelectedEntityFromSdk() {
+    if (!getSelectionFn) return null;
+    try {
+      const raw = getSelectionFn();
+      const normalized = normalizeSelection(raw);
+      if (!normalized) {
+        return null;
+      }
+      if (normalized.kind === 'segment') {
+        if (!getSegmentByIdFn) return null;
+        const items = normalized.ids.map((segmentId) => getSegmentByIdFn({ segmentId })).filter(Boolean);
+        return items.length ? { kind: 'segment', items } : null;
+      }
+      if (normalized.kind === 'mapComment') {
+        if (!getMapCommentByIdFn) return null;
+        const items = normalized.ids.map((mapCommentId) => getMapCommentByIdFn({ mapCommentId })).filter(Boolean);
+        return items.length ? { kind: 'mapComment', items } : null;
+      }
+      if (normalized.kind === 'venue') {
+        if (!getVenueByIdFn) return null;
+        const items = normalized.ids.map((venueId) => getVenueByIdFn({ venueId })).filter(Boolean);
+        return items.length ? { kind: 'venue', items } : null;
+      }
+      return null;
+    } catch (e) {
+      log('getSelectedEntity failed: ' + e.message);
+      return null;
+    }
+  }
+
+  function getVenueEntityFromUrl() {
+    if (!getVenueByIdFn) return null;
+    const raw = new URLSearchParams(window.location.search).get('venueUpdateRequest');
+    if (DEBUG) debugLog(`getVenueEntityFromUrl: location.search = "${window.location.search}", venueUpdateRequest param = ${raw ? `"${raw}"` : 'missing'}`);
+    const venueId = raw ? Number(raw.split('.')[0]) : null;
+    if (!venueId) return null;
+    try {
+      const venue = getVenueByIdFn({ venueId });
+      if (DEBUG) debugLog(`getVenueEntityFromUrl: getVenueByIdFn({ venueId: ${venueId} }) = ${venue ? JSON.stringify(venue) : 'nothing'}`);
+      return venue ? { kind: 'venue', items: [venue] } : null;
+    } catch (e) {
+      log('getVenueEntityFromUrl failed: ' + e.message);
+      return null;
+    }
   }
 
   function getSelectedSegments() {
-    if (!getSelectionFn || !getSegmentByIdFn) return [];
-    try {
-      const ids = normalizeSelectionIds(getSelectionFn());
-      return ids.map((segmentId) => getSegmentByIdFn({ segmentId })).filter(Boolean);
-    } catch (e) {
-      log('getSelectedSegments failed: ' + e.message);
-      return [];
-    }
+    const entity = getSelectedEntity();
+    return entity && entity.kind === 'segment' ? entity.items : [];
   }
 
   // Returns the first defined value among several possible field-name spellings,
@@ -559,19 +677,76 @@
     return null;
   }
 
-  // ── Segment selection ────────────────────────────────────────────────────────
+  // ── Segment / map note selection ─────────────────────────────────────────────
   function onSelectionChanged() {
-    const segments = getSelectedSegments();
+    const entity = getSelectedEntity();
     const infoDiv = byId('wmereq-segment-info');
     const lockSel = byId('wmereq-lock');
 
     if (!infoDiv) return;
 
-    if (!segments.length) {
-      infoDiv.innerHTML = '<div class="wmereq-hint">Select a segment on the map to get started.</div>';
+    if (!entity || !entity.items.length) {
+      infoDiv.innerHTML = '<div class="wmereq-hint">Select a segment, map note, or place on the map to get started.</div>';
       return;
     }
 
+    if (entity.kind === 'venue') {
+      const venues = entity.items;
+      const multiHint = venues.length > 1
+        ? `<div class="wmereq-hint">${venues.length} places selected — permalink will include all of them.</div>`
+        : '';
+      const venue = venues[0];
+      const lockRankRaw = pick(venue, ['lockRank', 'lockLevel']);
+      const lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null; // WME stores 0-based rank
+      const placeName = pick(venue, ['name']) || 'Unnamed Place';
+      const permalink = buildPermalink(venues, 'venue');
+
+      infoDiv.innerHTML = `
+        ${multiHint}
+        <div class="wmereq-lock-info">
+          <strong>${escHtml(placeName)}</strong>${lockLevel ? ` · Lock: ${lockLevel}` : ''}<br>
+          <small style="word-break:break-all">${escHtml(permalink)}</small>
+        </div>`;
+
+      // Auto-select the inferred lock level, same as segments — a place's lock rank is
+      // what determines whether an editor's rank is enough to accept/decline it themselves.
+      if (lockLevel && lockSel) {
+        lockSel.value = String(lockLevel);
+        const hint = byId('wmereq-lock-hint');
+        if (hint) hint.textContent = `(inferred from place: ${lockLevel})`;
+      }
+
+      applyAutoCountry(null);
+      syncLockRow();
+      return;
+    }
+
+    if (entity.kind === 'mapComment') {
+      const notes = entity.items;
+      const multiHint = notes.length > 1
+        ? `<div class="wmereq-hint">${notes.length} map notes selected — permalink will include all of them.</div>`
+        : '';
+      const note = notes[0];
+      const permalink = buildPermalink(notes, 'mapComment');
+
+      infoDiv.innerHTML = `
+        ${multiHint}
+        <div class="wmereq-lock-info">
+          <strong>Map Note</strong>${note.subject ? `: ${escHtml(note.subject)}` : ''}<br>
+          <small style="word-break:break-all">${escHtml(permalink)}</small>
+        </div>`;
+
+      // Map notes don't carry a lock rank the way segments do, so nothing to
+      // auto-select on wmereq-lock here. There's also no per-entity address
+      // lookup for a note (only Segments exposes getAddress) — applyAutoCountry(null)
+      // skips the exact-address attempt and falls straight to the view-based
+      // (top country/state) fallback, which is approximate but the best available.
+      applyAutoCountry(null);
+      syncLockRow();
+      return;
+    }
+
+    const segments = entity.items;
     const multiHint = segments.length > 1
       ? `<div class="wmereq-hint">${segments.length} segments selected — permalink will include all of them.</div>`
       : '';
@@ -580,7 +755,7 @@
     const lockRankRaw = pick(seg, ['lockRank', 'lockLevel']);
     const lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null; // WME stores 0-based rank
     const roadType = getRoadTypeName(pick(seg, ['roadType']));
-    const permalink = buildPermalink(segments);
+    const permalink = buildPermalink(segments, 'segment');
 
     infoDiv.innerHTML = `
       ${multiHint}
@@ -774,27 +949,50 @@
   function syncLockRow() {
     const typeVal = (byId('wmereq-type') || {}).value;
     const lockRow = byId('wmereq-lock-row');
-    if (lockRow) lockRow.style.display = typeVal === 'imagery' ? 'none' : '';
+    if (lockRow) lockRow.style.display = LOCK_GATED_TYPES.includes(typeVal) ? '' : 'none';
   }
 
   // ── Permalink builder ─────────────────────────────────────────────────────────
-  // Accepts one or more segments; Waze permalinks support a comma-separated
-  // segments list, so a multi-selection produces a single link covering all of them.
-  // Builds off the current page's own origin+path (not a hardcoded domain) so it
-  // always matches whatever host/locale variant (e.g. waze.com/en-US/editor vs
-  // www.waze.com/editor) is actually active — a mismatch there triggers a redirect
-  // that drops the query string. zoomLevel (not zoom) is the param name WME expects.
-  function buildPermalink(segments) {
+  // Accepts one or more segments (kind = 'segment', the default), map notes
+  // (kind = 'mapComment'), or places (kind = 'venue'); Waze permalinks support a
+  // comma-separated id list for the relevant param, so a multi-selection produces
+  // a single link covering all of them. Builds off the current page's own
+  // origin+path (not a hardcoded domain) so it always matches whatever
+  // host/locale variant (e.g. waze.com/en-US/editor vs www.waze.com/editor) is
+  // actually active — a mismatch there triggers a redirect that drops the query
+  // string. zoomLevel (not zoom) is the param name WME expects for segments;
+  // `mapComments` for notes and `venues` for places aren't confirmed by any
+  // public doc (unlike `segments`), just inferred from the SDK's own
+  // `segments`/`mapComment`/`venue` naming — verify they still resolve in WME if
+  // note/place permalinks ever stop landing on the right selection.
+  function buildPermalink(items, kind) {
     try {
       const center = sdk.Map.getMapCenter();
       const zoom = sdk.Map.getZoomLevel();
       const lon = pick(center, ['lon', 'lng', 'x']);
       const lat = pick(center, ['lat', 'y']);
-      const segIds = segments.map((s) => pick(s, ['id', 'segmentId'])).filter((id) => id != null).join(',');
+      const ids = items.map((s) => pick(s, ['id', 'segmentId'])).filter((id) => id != null).join(',');
+      const param = kind === 'mapComment' ? 'mapComments' : kind === 'venue' ? 'venues' : 'segments';
       const base = `${window.location.origin}${window.location.pathname}`;
-      return `${base}?env=row&lat=${lat}&lon=${lon}&zoomLevel=${zoom}&segments=${segIds}`;
+      return `${base}?env=row&lat=${lat}&lon=${lon}&zoomLevel=${zoom}&${param}=${ids}`;
     } catch (e) {
-      return window.location.href;
+      return stripUpdateRequestParams(window.location.href);
+    }
+  }
+
+  // Removes `*UpdateRequest` params (e.g. `venueUpdateRequest=<venueId>.<suggestionId>.<subId>`)
+  // from a URL — used for the buildPermalink() fallback above, since that param ties the
+  // link to one specific, ephemeral suggestion (gone once accepted/declined) rather than
+  // the place itself, unlike the clean `venues=<id>` link buildPermalink normally sends.
+  function stripUpdateRequestParams(href) {
+    try {
+      const url = new URL(href);
+      [...url.searchParams.keys()].forEach((key) => {
+        if (/UpdateRequest$/i.test(key)) url.searchParams.delete(key);
+      });
+      return url.toString();
+    } catch (e) {
+      return href;
     }
   }
 
@@ -807,7 +1005,7 @@
     return names[type] || `Road (${type})`;
   }
 
-  // ── Downlock reason modal ─────────────────────────────────────────────────────
+  // ── Reason modal (downlock + Accept/Decline PUR) ──────────────────────────────
   const DOWNLOCK_REASONS = ['Adjust SL', 'Add SB', 'Fix Geo', 'Add JB', 'HN', 'TR'];
   // Full wording shown as a tooltip on each chip — check these match your team's shorthand.
   const DOWNLOCK_REASON_TOOLTIPS = {
@@ -819,20 +1017,38 @@
     TR: 'Turn Restrictions',
   };
 
-  // Shows quick-pick reason chips plus a free-text field. Resolves
-  // { confirmed: false } if cancelled, or { confirmed: true, reason } otherwise
-  // (reason is '' if nothing was picked/typed but the user chose to continue).
-  function openDownlockReasonModal() {
+  const PUR_REASONS = ['New Name', 'New Image', 'Category', 'Address', 'Hours', 'Other'];
+  const PUR_REASON_TOOLTIPS = {
+    'New Name': 'Place Name Change',
+    'New Image': 'Place Image Update',
+    Category: 'Category Change',
+    Address: 'Address Change',
+    Hours: 'Hours of Operation Update',
+    Other: 'Other Place Update',
+  };
+
+  // Which request types show the reason modal before submitting, and with what title/chips.
+  const REASON_MODAL_CONFIG = {
+    downlock: { title: 'Downlock Reason', reasons: DOWNLOCK_REASONS, tooltips: DOWNLOCK_REASON_TOOLTIPS },
+    accept_pur: { title: 'Accept PUR Reason', reasons: PUR_REASONS, tooltips: PUR_REASON_TOOLTIPS },
+    decline_pur: { title: 'Decline PUR Reason', reasons: PUR_REASONS, tooltips: PUR_REASON_TOOLTIPS },
+  };
+
+  // Shows quick-pick reason chips (from `reasons`/`tooltips`) plus a free-text field, under
+  // the given `title`. Resolves { confirmed: false } if cancelled, or
+  // { confirmed: true, reason } otherwise (reason is '' if nothing was picked/typed but the
+  // user chose to continue).
+  function openReasonModal(title, reasons, tooltips) {
     return new Promise((resolve) => {
       const selected = new Set();
       const dlg = document.createElement('div');
       dlg.id = 'wmereq-reason-overlay';
       dlg.innerHTML = `
         <div class="wmereq-dialog">
-          <h4>Downlock Reason</h4>
+          <h4>${escHtml(title)}</h4>
           <div class="wmereq-hint">Select one or more quick reasons, or add your own below.</div>
           <div class="wmereq-reason-chips">
-            ${DOWNLOCK_REASONS.map((r) => `<button type="button" class="wmereq-chip" data-reason="${escHtml(r)}" title="${escHtml(DOWNLOCK_REASON_TOOLTIPS[r] || r)}">${escHtml(r)}</button>`).join('')}
+            ${reasons.map((r) => `<button type="button" class="wmereq-chip" data-reason="${escHtml(r)}" title="${escHtml(tooltips[r] || r)}">${escHtml(r)}</button>`).join('')}
           </div>
           <label>Additional details (optional)</label>
           <textarea id="wmereq-reason-custom" placeholder="Any extra context…"></textarea>
@@ -875,10 +1091,11 @@
     let notes = (byId('wmereq-notes') || {}).value.trim();
 
     if (!countryId) { showStatus('Please select a country.', 'error'); return; }
-    if (type === 'downlock' && !lockLevel) { showStatus('Please select a lock level.', 'error'); return; }
+    if (LOCK_GATED_TYPES.includes(type) && !lockLevel) { showStatus('Please select a lock level.', 'error'); return; }
 
-    if (type === 'downlock') {
-      const { confirmed, reason } = await openDownlockReasonModal();
+    if (REASON_MODAL_CONFIG[type]) {
+      const cfg = REASON_MODAL_CONFIG[type];
+      const { confirmed, reason } = await openReasonModal(cfg.title, cfg.reasons, cfg.tooltips);
       if (!confirmed) return;
       if (reason) notes = notes ? `Reason: ${reason}\n${notes}` : `Reason: ${reason}`;
     }
@@ -887,23 +1104,32 @@
   }
 
   // Quick submit from the floating action buttons, using the currently selected
-  // segment's inferred country/region and lock level (no need to open the panel).
+  // entity's inferred country/region and lock level (no need to open the panel).
+  // Each type only accepts certain entity kinds — see TYPE_ENTITY_KINDS.
   async function quickSubmit(type) {
-    const selectedSegs = getSelectedSegments();
-    if (!selectedSegs.length) { showFabStatus('Select a segment first.', 'error'); return; }
+    const entity = getSelectedEntity();
+    if (!entity || !entity.items.length) { showFabStatus('Select a segment, map note, or place first.', 'error'); return; }
+    if (!TYPE_ENTITY_KINDS[type].includes(entity.kind)) {
+      showFabStatus(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
+      return;
+    }
 
-    const seg = selectedSegs[0];
-    const countryId = resolveCurrentCountryId(seg);
-    const regionId = resolveCurrentRegionId(seg);
-    const lockRankRaw = pick(seg, ['lockRank', 'lockLevel']);
+    const isSegment = entity.kind === 'segment';
+    const item = entity.items[0];
+    // Only segments have a per-entity address lookup (DataModel.Segments.getAddress) —
+    // venues/notes fall back to the view-based (top country/state) detection.
+    const countryId = resolveCurrentCountryId(isSegment ? item : null);
+    const regionId = resolveCurrentRegionId(isSegment ? item : null);
+    const lockRankRaw = entity.kind === 'segment' || entity.kind === 'venue' ? pick(item, ['lockRank', 'lockLevel']) : null;
     const lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
 
     if (!countryId) { showFabStatus('Could not detect the country — use the panel.', 'error'); return; }
-    if (type === 'downlock' && !lockLevel) { showFabStatus('Segment has no lock level.', 'error'); return; }
+    if (LOCK_GATED_TYPES.includes(type) && !lockLevel) { showFabStatus('Selected entity has no lock level.', 'error'); return; }
 
     let notes = null;
-    if (type === 'downlock') {
-      const { confirmed, reason } = await openDownlockReasonModal();
+    if (REASON_MODAL_CONFIG[type]) {
+      const cfg = REASON_MODAL_CONFIG[type];
+      const { confirmed, reason } = await openReasonModal(cfg.title, cfg.reasons, cfg.tooltips);
       if (!confirmed) return;
       notes = reason ? `Reason: ${reason}` : null;
     }
@@ -911,16 +1137,27 @@
     await doSubmit(type, { countryId, regionId, lockLevel, notes, status: showFabStatus });
   }
 
-  async function doSubmit(type, { countryId, regionId, lockLevel, notes, status }) {
-    const selectedSegs = getSelectedSegments();
-    if (!selectedSegs.length) { status('Please select a segment first.', 'error'); return; }
+  function describeType(type) {
+    return { downlock: 'Downlock', imagery: 'Imagery', accept_pur: 'Accept PUR', decline_pur: 'Decline PUR' }[type] || type;
+  }
 
-    const seg = selectedSegs[0];
-    const permalink = buildPermalink(selectedSegs);
+  function describeKind(kind) {
+    return { segment: 'segment', mapComment: 'map note', venue: 'place' }[kind] || kind;
+  }
+
+  async function doSubmit(type, { countryId, regionId, lockLevel, notes, status }) {
+    const entity = getSelectedEntity();
+    if (!entity || !entity.items.length) { status('Please select a segment, map note, or place first.', 'error'); return; }
+    if (!TYPE_ENTITY_KINDS[type].includes(entity.kind)) {
+      status(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
+      return;
+    }
+
+    const permalink = buildPermalink(entity.items, entity.kind);
     const { userName, editorRank } = getCurrentUserInfo();
 
-    if (type === 'downlock' && lockLevel && editorRank != null && editorRank >= parseInt(lockLevel)) {
-      status(`Your edit rank (${editorRank}) already covers this segment's lock level (${lockLevel}) — no downlock request needed.`, 'error');
+    if (LOCK_GATED_TYPES.includes(type) && lockLevel && editorRank != null && editorRank >= parseInt(lockLevel)) {
+      status(`Your edit rank (${editorRank}) already covers this lock level (${lockLevel}) — no ${describeType(type).toLowerCase()} request needed.`, 'error');
       return;
     }
 
@@ -932,7 +1169,7 @@
       notes: notes || null,
       submitted_by: userName || null,
       editor_rank: editorRank,
-      ...(type === 'downlock' && lockLevel ? { lock_level: parseInt(lockLevel) } : {}),
+      ...(LOCK_GATED_TYPES.includes(type) && lockLevel ? { lock_level: parseInt(lockLevel) } : {}),
     };
 
     // Uploaded (if any) before creating the request, and its key attached to the create
@@ -1026,6 +1263,14 @@
     fabStyle = (byId('wmereq-fab-style') || {}).value;
     GM_setValue('fabStyle', fabStyle);
     applyFabStyle();
+
+    for (const type of FAB_TYPES) {
+      const checkbox = byId(`wmereq-fab-visible-${type.replace('_', '-')}`);
+      if (checkbox) fabVisible[type] = checkbox.checked;
+    }
+    GM_setValue('wmereq-fab-visible', JSON.stringify(fabVisible));
+    applyFabVisibility();
+
     showStatus('Settings saved.', 'ok');
   }
 
@@ -1098,7 +1343,11 @@
   }
 
   function disableButtons(disabled) {
-    ['wmereq-btn-submit-downlock', 'wmereq-btn-submit-imagery', 'wmereq-fab-downlock', 'wmereq-fab-imagery'].forEach((id) => {
+    [
+      'wmereq-btn-submit-downlock', 'wmereq-btn-submit-imagery',
+      'wmereq-btn-submit-accept-pur', 'wmereq-btn-submit-decline-pur',
+      'wmereq-fab-downlock', 'wmereq-fab-imagery', 'wmereq-fab-accept-pur', 'wmereq-fab-decline-pur',
+    ].forEach((id) => {
       const btn = byId(id);
       if (btn) btn.disabled = disabled;
     });

@@ -1,9 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Badge, Container, Paper, Progress, Table, Text, Title } from '@mantine/core'
 import { useUserReport } from '@/lib/queries'
-import { TypeBadge } from '@/lib/labels'
+import { TypeBadge, TYPE_COLORS, TYPE_LABELS, REQUEST_TYPE_LIST } from '@/lib/labels'
 
 export const Route = createFileRoute('/reports')({ component: Reports })
+
+const COL_SPAN = 3 + REQUEST_TYPE_LIST.length
 
 function Reports() {
   const { data, isLoading, isError, error } = useUserReport()
@@ -25,8 +27,9 @@ function Reports() {
               <Table.Tr>
                 <Table.Th>User</Table.Th>
                 <Table.Th>Total</Table.Th>
-                <Table.Th>Downlock</Table.Th>
-                <Table.Th>Imagery</Table.Th>
+                {REQUEST_TYPE_LIST.map((t) => (
+                  <Table.Th key={t}>{TYPE_LABELS[t]}</Table.Th>
+                ))}
                 <Table.Th>Split</Table.Th>
                 <Table.Th>Majority Type</Table.Th>
               </Table.Tr>
@@ -34,7 +37,7 @@ function Reports() {
             <Table.Tbody>
               {isLoading && (
                 <Table.Tr>
-                  <Table.Td colSpan={6}>
+                  <Table.Td colSpan={COL_SPAN}>
                     <Text c="dimmed" ta="center">
                       Loading…
                     </Text>
@@ -43,7 +46,7 @@ function Reports() {
               )}
               {isError && (
                 <Table.Tr>
-                  <Table.Td colSpan={6}>
+                  <Table.Td colSpan={COL_SPAN}>
                     <Text c="red" ta="center">
                       Error: {(error as Error).message}
                     </Text>
@@ -52,7 +55,7 @@ function Reports() {
               )}
               {!isLoading && !isError && !rows.length && (
                 <Table.Tr>
-                  <Table.Td colSpan={6}>
+                  <Table.Td colSpan={COL_SPAN}>
                     <Text c="dimmed" ta="center">
                       No requests with a recorded username yet.
                     </Text>
@@ -63,12 +66,14 @@ function Reports() {
                 <Table.Tr key={r.submitted_by}>
                   <Table.Td>{r.submitted_by}</Table.Td>
                   <Table.Td>{r.total}</Table.Td>
-                  <Table.Td>{r.downlock_count}</Table.Td>
-                  <Table.Td>{r.imagery_count}</Table.Td>
+                  {REQUEST_TYPE_LIST.map((t) => (
+                    <Table.Td key={t}>{r.counts[t]}</Table.Td>
+                  ))}
                   <Table.Td style={{ minWidth: 120 }}>
                     <Progress.Root size="lg">
-                      <Progress.Section value={(r.downlock_count / r.total) * 100} color="red" />
-                      <Progress.Section value={(r.imagery_count / r.total) * 100} color="blue" />
+                      {REQUEST_TYPE_LIST.map((t) => (
+                        <Progress.Section key={t} value={(r.counts[t] / r.total) * 100} color={TYPE_COLORS[t]} />
+                      ))}
                     </Progress.Root>
                   </Table.Td>
                   <Table.Td>
