@@ -4,10 +4,10 @@ import { json, err } from './http'
 import { fireNotifications, type RequestRow } from './notifications'
 import { canAccessCountry, countryScopeSQL, type UserAccess } from './access'
 
-// Request types where lock_level is meaningful: downlocks target a locked segment, and
-// accept/decline PUR requests target a locked place — both need the lock rank to route the
-// notification to an editor whose rank covers it. Imagery requests carry no lock level.
-const LOCK_GATED_TYPES = new Set<RequestType>(['downlock', 'accept_pur', 'decline_pur'])
+// Request types where lock_level is meaningful: downlock/uplock target a locked segment or
+// place, and accept/decline PUR requests target a locked place — all need the lock rank to
+// route the notification to an editor whose rank covers it. Imagery requests carry no lock level.
+const LOCK_GATED_TYPES = new Set<RequestType>(['downlock', 'uplock', 'accept_pur', 'decline_pur'])
 
 interface RequestWithCountry extends RequestRow {
   status: Status

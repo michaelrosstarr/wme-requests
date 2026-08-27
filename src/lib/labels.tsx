@@ -3,6 +3,7 @@ import {
   Globe,
   Image,
   Lock,
+  Unlock,
   MessageSquare,
   MessageCircle,
   Send,
@@ -19,6 +20,7 @@ import type { CredentialType, EventType, Platform, RequestType, Status } from '.
 
 export const TYPE_LABELS: Record<RequestType, string> = {
   downlock: 'Downlock',
+  uplock: 'Uplock',
   imagery: 'Imagery',
   accept_pur: 'Accept PUR',
   decline_pur: 'Decline PUR',
@@ -26,6 +28,7 @@ export const TYPE_LABELS: Record<RequestType, string> = {
 
 export const TYPE_COLORS: Record<RequestType, string> = {
   downlock: 'red',
+  uplock: 'grape',
   imagery: 'blue',
   accept_pur: 'green',
   decline_pur: 'orange',
@@ -37,6 +40,7 @@ export const REQUEST_TYPE_LIST = Object.keys(TYPE_LABELS) as RequestType[]
 
 const TYPE_ICONS: Record<RequestType, typeof Lock> = {
   downlock: Lock,
+  uplock: Unlock,
   imagery: Image,
   accept_pur: CircleCheck,
   decline_pur: CircleX,
@@ -119,6 +123,7 @@ export function PlatformBadge({ platform }: Readonly<{ platform: Platform }>) {
 const EVENT_TYPE_ICONS: Record<EventType, typeof Globe> = {
   global: Globe,
   downlock: Lock,
+  uplock: Unlock,
   imagery: Image,
   accept_pur: CircleCheck,
   decline_pur: CircleX,
@@ -127,6 +132,7 @@ const EVENT_TYPE_ICONS: Record<EventType, typeof Globe> = {
 const EVENT_TYPE_LABELS: Record<EventType, string> = {
   global: 'Global',
   downlock: 'Downlock only',
+  uplock: 'Uplock only',
   imagery: 'Imagery only',
   accept_pur: 'Accept PUR only',
   decline_pur: 'Decline PUR only',

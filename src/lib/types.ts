@@ -1,4 +1,4 @@
-export type RequestType = 'downlock' | 'imagery' | 'accept_pur' | 'decline_pur'
+export type RequestType = 'downlock' | 'uplock' | 'imagery' | 'accept_pur' | 'decline_pur'
 export type Status = 'pending' | 'in_progress' | 'completed' | 'rejected'
 export type Platform =
   | 'slack'
@@ -11,7 +11,7 @@ export type Platform =
   | 'google_chat'
   | 'ntfy'
   | 'gotify'
-export type EventType = 'global' | 'downlock' | 'imagery' | 'accept_pur' | 'decline_pur'
+export type EventType = 'global' | 'downlock' | 'uplock' | 'imagery' | 'accept_pur' | 'decline_pur'
 export type CredentialType = 'google_service_account' | 'email_postmark' | 'email_mailgun' | 'email_smtp'
 
 export interface Country {

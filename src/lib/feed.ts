@@ -22,6 +22,7 @@ function rfc822(iso: string) {
 
 const TYPE_LABELS: Record<RequestType, string> = {
   downlock: 'Downlock',
+  uplock: 'Uplock',
   imagery: 'Imagery',
   accept_pur: 'Accept PUR',
   decline_pur: 'Decline PUR',

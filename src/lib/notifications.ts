@@ -6,9 +6,9 @@ import { sendEmail as dispatchEmail } from './email/send-email'
 import { sendPush } from './push'
 import { audiencePushSubscriptions, deleteSubscriptionById, type PushSubscriptionRow } from './subscriptions'
 
-// Same as LOCK_GATED_TYPES in ./requests — downlock and PUR requests carry a lock level,
-// imagery requests don't.
-const LOCK_GATED_TYPES = new Set<RequestType>(['downlock', 'accept_pur', 'decline_pur'])
+// Same as LOCK_GATED_TYPES in ./requests — downlock/uplock and PUR requests carry a lock
+// level, imagery requests don't.
+const LOCK_GATED_TYPES = new Set<RequestType>(['downlock', 'uplock', 'accept_pur', 'decline_pur'])
 
 export interface NotificationChannel {
   id: number
@@ -68,6 +68,7 @@ function applyPrefixTemplate(template: string, vars: PrefixVars) {
 
 const TYPE_META: Record<RequestType, { label: string; color: number }> = {
   downlock: { label: 'Downlock Request', color: 0xe74c3c },
+  uplock: { label: 'Uplock Request', color: 0x9b59b6 },
   imagery: { label: 'Imagery Request', color: 0x3498db },
   accept_pur: { label: 'Accept PUR Request', color: 0x2ecc71 },
   decline_pur: { label: 'Decline PUR Request', color: 0xf39c12 },

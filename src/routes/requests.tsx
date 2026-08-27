@@ -41,6 +41,7 @@ export const Route = createFileRoute('/requests')({ component: Dashboard })
 const PAGE_SIZE = 50
 const TYPE_OPTIONS = [
   { value: 'downlock', label: 'Downlock' },
+  { value: 'uplock', label: 'Uplock' },
   { value: 'imagery', label: 'Imagery' },
   { value: 'accept_pur', label: 'Accept PUR' },
   { value: 'decline_pur', label: 'Decline PUR' },

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.7.1
-// @description  Send downlock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
+// @version      2.8.0
+// @description  Send downlock, uplock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
@@ -13,7 +13,7 @@
 // @grant        GM_info
 // @grant        unsafeWindow
 // @license MIT
-// @connect      *
+// @connect      requests.wazetools.com
 // @supportURL   https://github.com/michaelrosstarr/wme-requests/issues
 // @updateURL    https://raw.githubusercontent.com/michaelrosstarr/wme-requests/main/userscript/wme-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/michaelrosstarr/wme-requests/main/userscript/wme-requests.user.js
@@ -26,6 +26,11 @@
   // ── Configuration ───────────────────────────────────────────────────────────
   // Set this to your deployed Cloudflare Workers URL (no trailing slash).
   // You can also change it in the script settings panel inside WME.
+  // Its host is also what @connect above grants GM_xmlhttpRequest access to without a
+  // prompt — if you fork this for a self-hosted deployment on a different domain, update
+  // both. Anyone who just changes the Settings panel's API Base URL to a different host
+  // (rather than forking) will instead get a one-time Tampermonkey permission prompt for
+  // it, which is expected.
   const DEFAULT_API_BASE = 'https://requests.wazetools.com';
 
   const SCRIPT_NAME = 'WME Requests';
@@ -56,10 +61,13 @@
   let getTopCountryFn = null;
   let getTopStateFn = null;
 
-  const LOCK_GATED_TYPES = ['downlock', 'accept_pur', 'decline_pur'];
+  const LOCK_GATED_TYPES = ['downlock', 'uplock', 'accept_pur', 'decline_pur'];
 
+  // downlock and uplock both cover segments and places — accept/decline PUR remain
+  // place-only, matching what the backend's migrations/0019 added.
   const TYPE_ENTITY_KINDS = {
-    downlock: ['segment'],
+    downlock: ['segment', 'venue'],
+    uplock: ['segment', 'venue'],
     imagery: ['segment', 'mapComment'],
     accept_pur: ['venue'],
     decline_pur: ['venue'],
@@ -167,6 +175,8 @@
       .wmereq-btn-primary:hover  { background: #0077e6; }
       .wmereq-btn-downlock { background: #e53935; color: #fff; }
       .wmereq-btn-downlock:hover { background: #c62828; }
+      .wmereq-btn-uplock { background: #9b59b6; color: #fff; }
+      .wmereq-btn-uplock:hover { background: #8e44ad; }
       .wmereq-btn-imagery  { background: #0a8cff; color: #fff; }
       .wmereq-btn-imagery:hover  { background: #0077e6; }
       .wmereq-btn-accept-pur { background: #2ecc71; color: #fff; }
@@ -181,6 +191,11 @@
       #${PANEL_ID} .wmereq-status.info   { background: #e3f2fd; color: #1565c0; }
       #${PANEL_ID} .wmereq-hint { font-size: 11px; color: #888; margin-top: -4px; margin-bottom: 8px; }
       #${PANEL_ID} .wmereq-lock-info { font-size: 12px; color: #555; margin-bottom: 8px; padding: 4px 8px; background:#fffde7; border-radius:4px; }
+      #${PANEL_ID} .wmereq-quick-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+      .wmereq-btn-sm { padding: 4px 10px; font-size: 11px; margin-right: 0; }
+      /* Not scoped to #${PANEL_ID} — injected directly into WME's own native place
+         (venue) edit panel, which lives outside our panel's DOM subtree entirely. */
+      .wmereq-native-quick-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
       #${PANEL_ID}.wmereq-floating {
         position: fixed; top: 60px; right: 10px; width: 300px; max-height: calc(100vh - 80px);
         overflow-y: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.25);
@@ -200,10 +215,11 @@
       #wmereq-reason-overlay h4 { margin: 0 0 8px; font-size: 14px; }
       #wmereq-reason-overlay .wmereq-hint { font-size: 11px; color: #888; margin-bottom: 10px; }
       #wmereq-reason-overlay label { font-size: 12px; font-weight: 500; display: block; margin: 10px 0 3px; }
-      #wmereq-reason-overlay textarea {
+      #wmereq-reason-overlay textarea, #wmereq-reason-overlay select {
         width: 100%; padding: 5px 7px; border: 1px solid #ccc; border-radius: 4px;
-        font-size: 12px; box-sizing: border-box; resize: vertical; min-height: 50px;
+        font-size: 12px; box-sizing: border-box;
       }
+      #wmereq-reason-overlay textarea { resize: vertical; min-height: 50px; }
       #wmereq-reason-overlay .wmereq-reason-chips { display: flex; flex-wrap: wrap; gap: 6px; }
       #wmereq-reason-overlay .wmereq-chip {
         border: 1px solid #ccc; background: #f7f7f7; color: #333; border-radius: 14px;
@@ -231,17 +247,18 @@
       #wmereq-floating-actions .wmereq-fab:hover { opacity: .85; }
       #wmereq-floating-actions .wmereq-fab:disabled { opacity: .5; cursor: default; }
       #wmereq-floating-actions .wmereq-fab-downlock { background: #e53935; }
+      #wmereq-floating-actions .wmereq-fab-uplock   { background: #9b59b6; }
       #wmereq-floating-actions .wmereq-fab-imagery  { background: #0a8cff; }
-      #wmereq-floating-actions .wmereq-fab-accept-pur  { background: #2ecc71; }
-      #wmereq-floating-actions .wmereq-fab-decline-pur { background: #f39c12; }
-      #wmereq-floating-actions .wmereq-fab-icon { display: none; font-size: 13px; line-height: 1; }
-      /* Icon + text mode: shows the icon alongside the (already small) label. */
+      /* Short text abbreviation (DL/UL/IMG), not an icon glyph — shown alongside the label in
+         compact mode, and alone (in place of the label) in icon-only mode. */
+      #wmereq-floating-actions .wmereq-fab-icon { display: none; font-size: 11px; font-weight: 700; letter-spacing: .3px; line-height: 1; }
+      /* Abbreviation + text mode: shows the abbreviation alongside the (already small) label. */
       #wmereq-floating-actions.wmereq-fab-compact .wmereq-fab-icon { display: inline; }
-      /* Icon-only mode: circular button, label hidden entirely. */
+      /* Abbreviation-only mode: circular button, label hidden entirely. */
       #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab {
         width: 38px; height: 38px; padding: 0; border-radius: 50%;
       }
-      #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab-icon { display: inline; font-size: 16px; }
+      #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab-icon { display: inline; font-size: 12px; font-weight: 700; letter-spacing: .3px; }
       #wmereq-floating-actions.wmereq-fab-icon-only .wmereq-fab-label { display: none; }
       #wmereq-floating-actions .wmereq-fab-status {
         font-size: 11px; padding: 5px 10px; border-radius: 12px; max-width: 220px; text-align: left;
@@ -300,16 +317,14 @@
     wrap.innerHTML = `
       <div class="wmereq-fab-handle" title="Drag to move">⠿ ⠿ ⠿</div>
       <div id="wmereq-fab-status" class="wmereq-fab-status" style="display:none"></div>
-      <button class="wmereq-fab wmereq-fab-downlock" id="wmereq-fab-downlock" title="Submit a downlock request for the selected segment"><span class="wmereq-fab-icon">🔒</span><span class="wmereq-fab-label">Downlock</span></button>
-      <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment or map note"><span class="wmereq-fab-icon">📷</span><span class="wmereq-fab-label">Imagery</span></button>
-      <button class="wmereq-fab wmereq-fab-accept-pur" id="wmereq-fab-accept-pur" title="Submit an Accept PUR request for the selected place"><span class="wmereq-fab-icon">✅</span><span class="wmereq-fab-label">Accept PUR</span></button>
-      <button class="wmereq-fab wmereq-fab-decline-pur" id="wmereq-fab-decline-pur" title="Submit a Decline PUR request for the selected place"><span class="wmereq-fab-icon">🚫</span><span class="wmereq-fab-label">Decline PUR</span></button>
+      <button class="wmereq-fab wmereq-fab-downlock" id="wmereq-fab-downlock" title="Submit a downlock request for the selected segment or place"><span class="wmereq-fab-icon">DL</span><span class="wmereq-fab-label">Downlock</span></button>
+      <button class="wmereq-fab wmereq-fab-uplock" id="wmereq-fab-uplock" title="Submit an uplock request for the selected segment or place"><span class="wmereq-fab-icon">UL</span><span class="wmereq-fab-label">Uplock</span></button>
+      <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment or map note"><span class="wmereq-fab-icon">IMG</span><span class="wmereq-fab-label">Imagery</span></button>
     `;
     document.body.appendChild(wrap);
     on('wmereq-fab-downlock', 'click', () => quickSubmit('downlock'));
+    on('wmereq-fab-uplock', 'click', () => quickSubmit('uplock'));
     on('wmereq-fab-imagery', 'click', () => quickSubmit('imagery'));
-    on('wmereq-fab-accept-pur', 'click', () => quickSubmit('accept_pur'));
-    on('wmereq-fab-decline-pur', 'click', () => quickSubmit('decline_pur'));
     makeDraggable(wrap, wrap.querySelector('.wmereq-fab-handle'), 'wmereq-fab-pos');
     applyFabStyle();
     applyFabVisibility();
@@ -317,15 +332,48 @@
 
   function applyFabStyle() {
     const wrap = byId('wmereq-floating-actions');
-    if (!wrap) return;
-    wrap.classList.toggle('wmereq-fab-compact', fabStyle === 'compact');
-    wrap.classList.toggle('wmereq-fab-icon-only', fabStyle === 'icon');
+    if (wrap) {
+      wrap.classList.toggle('wmereq-fab-compact', fabStyle === 'compact');
+      wrap.classList.toggle('wmereq-fab-icon-only', fabStyle === 'icon');
+    }
+    // The same Floating Buttons style setting also drives the quick-action buttons in our own
+    // panel and the ones injected into WME's native segment/place panels — refresh their
+    // labels to match whenever it changes.
+    refreshQuickActionLabels();
   }
 
-  const FAB_TYPES = ['downlock', 'imagery', 'accept_pur', 'decline_pur'];
+  const TYPE_ABBR = { downlock: 'DL', uplock: 'UL', imagery: 'IMG', accept_pur: 'ACC', decline_pur: 'DEC' };
+
+  // Label text for a quick-action button (panel rows and native-injected alike), following
+  // the same fabStyle setting as the floating map buttons: full name, abbreviation + name, or
+  // just the abbreviation.
+  function quickActionLabel(type) {
+    const abbr = TYPE_ABBR[type] || describeType(type);
+    if (fabStyle === 'icon') return abbr;
+    if (fabStyle === 'compact') return `${abbr} ${describeType(type)}`;
+    return describeType(type);
+  }
+
+  // Re-labels every quick-action button currently on the page (both static panel rows and
+  // whatever's been injected into the native segment/place panel) to match the current
+  // fabStyle — called whenever that setting changes, since these buttons aren't rebuilt.
+  function refreshQuickActionLabels() {
+    document.querySelectorAll('[data-wmereq-qa-type]').forEach((btn) => {
+      btn.textContent = quickActionLabel(btn.getAttribute('data-wmereq-qa-type'));
+    });
+  }
+
+  // Markup for one quick-action button, shared by both panel rows (buildPanelHTML) — the
+  // native-injected ones (injectNativeQuickActions) build the same shape via the DOM directly.
+  function quickActionButtonHTML(type, idPrefix) {
+    const id = `${idPrefix}-${type.replace('_', '-')}`;
+    return `<button type="button" class="wmereq-btn wmereq-btn-sm wmereq-btn-${type.replace('_', '-')}" id="${id}" title="Quick-submit a ${describeType(type)} request" data-wmereq-qa-type="${type}" style="display:none">${escHtml(quickActionLabel(type))}</button>`;
+  }
+
+  const FAB_TYPES = ['downlock', 'uplock', 'imagery'];
 
   function loadFabVisible() {
-    const defaults = { downlock: true, imagery: true, accept_pur: true, decline_pur: true };
+    const defaults = { downlock: true, uplock: true, imagery: true };
     const saved = GM_getValue('wmereq-fab-visible', null);
     if (!saved) return defaults;
     try {
@@ -413,6 +461,10 @@
           <div class="wmereq-hint">Select a segment, map note, or place on the map to get started.</div>
         </div>
 
+        <div class="wmereq-quick-actions" id="wmereq-quick-actions">
+          ${QUICK_ACTION_TYPES.map((type) => quickActionButtonHTML(type, 'wmereq-quick')).join('')}
+        </div>
+
         <div class="wmereq-section">
           <label>Country</label>
           <select id="wmereq-country">
@@ -427,6 +479,7 @@
           <label>Request Type</label>
           <select id="wmereq-type">
             <option value="downlock">Downlock</option>
+            <option value="uplock">Uplock</option>
             <option value="imagery">Imagery</option>
             <option value="accept_pur">Accept PUR</option>
             <option value="decline_pur">Decline PUR</option>
@@ -443,9 +496,10 @@
           <label>Notes (optional)</label>
           <textarea id="wmereq-notes" placeholder="Any extra context…"></textarea>
 
-          ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-btn-screenshot" style="width:100%;box-sizing:border-box;margin-bottom:8px">📷 Attach Screenshot</button>` : ''}
+          ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-btn-screenshot" style="width:100%;box-sizing:border-box;margin-bottom:8px">Attach Screenshot</button>` : ''}
 
           <button class="wmereq-btn wmereq-btn-downlock" id="wmereq-btn-submit-downlock">Submit Downlock</button>
+          <button class="wmereq-btn wmereq-btn-uplock" id="wmereq-btn-submit-uplock">Submit Uplock</button>
           <button class="wmereq-btn wmereq-btn-imagery"  id="wmereq-btn-submit-imagery">Submit Imagery</button>
           <button class="wmereq-btn wmereq-btn-accept-pur" id="wmereq-btn-submit-accept-pur">Submit Accept PUR</button>
           <button class="wmereq-btn wmereq-btn-decline-pur" id="wmereq-btn-submit-decline-pur">Submit Decline PUR</button>
@@ -456,14 +510,18 @@
         <div class="wmereq-section" id="wmereq-settings-section">
           <div style="font-weight:600;margin-bottom:8px;color:#333">Settings</div>
 
+          <div class="wmereq-quick-actions" id="wmereq-settings-quick-actions">
+            ${QUICK_ACTION_TYPES.map((type) => quickActionButtonHTML(type, 'wmereq-settings-quick')).join('')}
+          </div>
+
           <label>API Base URL</label>
           <input id="wmereq-api-base" type="url" value="${escHtml(apiBase)}" placeholder="https://your-project.your-subdomain.workers.dev" />
 
           <label>Floating Buttons</label>
           <select id="wmereq-fab-style">
             <option value="full" ${fabStyle === 'full' ? 'selected' : ''}>Text only</option>
-            <option value="compact" ${fabStyle === 'compact' ? 'selected' : ''}>Icon + text</option>
-            <option value="icon" ${fabStyle === 'icon' ? 'selected' : ''}>Icon only</option>
+            <option value="compact" ${fabStyle === 'compact' ? 'selected' : ''}>Abbreviation + text</option>
+            <option value="icon" ${fabStyle === 'icon' ? 'selected' : ''}>Abbreviation only</option>
           </select>
 
           <label>Show on Map</label>
@@ -488,12 +546,20 @@
     on('wmereq-type', 'change', syncLockRow);
     on('wmereq-country', 'change', (e) => fetchRegions(e.target.value));
     on('wmereq-btn-submit-downlock', 'click', () => submitRequest('downlock'));
+    on('wmereq-btn-submit-uplock', 'click', () => submitRequest('uplock'));
     on('wmereq-btn-submit-imagery', 'click', () => submitRequest('imagery'));
     on('wmereq-btn-submit-accept-pur', 'click', () => submitRequest('accept_pur'));
     on('wmereq-btn-submit-decline-pur', 'click', () => submitRequest('decline_pur'));
     on('wmereq-settings-save', 'click', saveSettings);
     on('wmereq-fab-reset-pos', 'click', resetFabPosition);
     on('wmereq-btn-screenshot', 'click', handleScreenshotButtonClick);
+    for (const prefix of ['wmereq-quick', 'wmereq-settings-quick']) {
+      on(`${prefix}-downlock`, 'click', () => quickSubmit('downlock', showStatus));
+      on(`${prefix}-uplock`, 'click', () => quickSubmit('uplock', showStatus));
+      on(`${prefix}-imagery`, 'click', () => quickSubmit('imagery', showStatus));
+      on(`${prefix}-accept-pur`, 'click', () => quickSubmit('accept_pur', showStatus));
+      on(`${prefix}-decline-pur`, 'click', () => quickSubmit('decline_pur', showStatus));
+    }
   }
 
   // ── Viewport screenshot (optional, Chrome-only) ───────────────────────────────
@@ -542,7 +608,7 @@
   function updateScreenshotButton() {
     const btn = byId('wmereq-btn-screenshot');
     if (!btn) return;
-    btn.textContent = capturedScreenshotBlob ? '📷 Screenshot attached ✓ (click to retake)' : '📷 Attach Screenshot';
+    btn.textContent = capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot';
   }
 
   async function handleScreenshotButtonClick() {
@@ -687,6 +753,9 @@
 
     if (!entity || !entity.items.length) {
       infoDiv.innerHTML = '<div class="wmereq-hint">Select a segment, map note, or place on the map to get started.</div>';
+      updateTypeOptions(null);
+      updateQuickActionButtons(null);
+      injectNativeQuickActions(null);
       return;
     }
 
@@ -717,7 +786,9 @@
       }
 
       applyAutoCountry(null);
-      syncLockRow();
+      updateTypeOptions(entity.kind);
+      updateQuickActionButtons(entity.kind);
+      injectNativeQuickActions(entity.kind);
       return;
     }
 
@@ -742,7 +813,9 @@
       // skips the exact-address attempt and falls straight to the view-based
       // (top country/state) fallback, which is approximate but the best available.
       applyAutoCountry(null);
-      syncLockRow();
+      updateTypeOptions(entity.kind);
+      updateQuickActionButtons(entity.kind);
+      injectNativeQuickActions(entity.kind);
       return;
     }
 
@@ -772,7 +845,9 @@
     }
 
     applyAutoCountry(seg);
-    syncLockRow();
+    updateTypeOptions(entity.kind);
+    updateQuickActionButtons(entity.kind);
+    injectNativeQuickActions(entity.kind);
   }
 
   // Matches an SDK country/state object (exact field casing unconfirmed by the public
@@ -952,6 +1027,92 @@
     if (lockRow) lockRow.style.display = LOCK_GATED_TYPES.includes(typeVal) ? '' : 'none';
   }
 
+  // Which request types are valid for a given entity kind — the inverse of
+  // TYPE_ENTITY_KINDS. `kind` null means nothing is selected, in which case every type
+  // is shown (there's nothing to filter against yet).
+  function validTypesForKind(kind) {
+    return kind ? Object.keys(TYPE_ENTITY_KINDS).filter((type) => TYPE_ENTITY_KINDS[type].includes(kind)) : Object.keys(TYPE_ENTITY_KINDS);
+  }
+
+  // Limits the Request Type dropdown to the types valid for whatever's currently
+  // selected — e.g. a place only offers Accept/Decline PUR, a segment only Downlock/Imagery
+  // — so the type shown always matches what the native edit panel on the left is open on.
+  function updateTypeOptions(kind) {
+    const sel = byId('wmereq-type');
+    if (!sel) return;
+    const validTypes = validTypesForKind(kind);
+    [...sel.options].forEach((opt) => {
+      const valid = validTypes.includes(opt.value);
+      opt.hidden = !valid;
+      opt.disabled = !valid;
+    });
+    if (!validTypes.includes(sel.value) && validTypes.length) sel.value = validTypes[0];
+    syncLockRow();
+  }
+
+  const QUICK_ACTION_TYPES = ['downlock', 'uplock', 'imagery', 'accept_pur', 'decline_pur'];
+  // Two identical button rows share this show/hide logic: the main "wmereq-quick-*" row
+  // (panel counterpart to the floating action buttons) and "wmereq-settings-quick-*" in the
+  // Settings section.
+  const QUICK_ACTION_BUTTON_PREFIXES = ['wmereq-quick', 'wmereq-settings-quick'];
+
+  // Shows/hides the in-panel quick-action buttons to match whichever types are valid for the
+  // current selection. Unlike updateTypeOptions, a null kind (nothing selected) hides all of
+  // them rather than showing everything — there's no entity to act on yet.
+  function updateQuickActionButtons(kind) {
+    const validTypes = kind ? validTypesForKind(kind) : [];
+    for (const prefix of QUICK_ACTION_BUTTON_PREFIXES) {
+      for (const type of QUICK_ACTION_TYPES) {
+        const btn = byId(`${prefix}-${type.replace('_', '-')}`);
+        if (btn) btn.style.display = validTypes.includes(type) ? '' : 'none';
+      }
+    }
+  }
+
+  const NATIVE_QUICK_ACTIONS_CLASS = 'wmereq-native-quick-actions';
+
+  // Which quick-action buttons to inject into each native panel — deliberately narrower than
+  // validTypesForKind for the segment panel (just Downlock/Uplock, not Imagery) to keep it
+  // uncluttered; the place panel keeps its full set.
+  const NATIVE_PANEL_TYPES = {
+    segment: ['downlock', 'uplock'],
+    venue: ['downlock', 'uplock', 'accept_pur', 'decline_pur'],
+  };
+
+  // Injects quick-action buttons directly into WME's own native segment/place edit panel,
+  // right after its Lock section (<div class="lock-edit-view">) — present, with that same
+  // class, in both the segment and place panels, confirmed against real panel HTML for each.
+  // Map notes have no lock section and get nothing. Re-runs on every selection change,
+  // clearing any previously injected row first (old node from a prior selection, or none at
+  // all if the current one isn't a segment/place).
+  function injectNativeQuickActions(kind, attempt) {
+    document.querySelectorAll(`.${NATIVE_QUICK_ACTIONS_CLASS}`).forEach((el) => el.remove());
+    const types = NATIVE_PANEL_TYPES[kind];
+    if (!types) return;
+
+    const anchor = document.querySelector('.lock-edit-view');
+    if (!anchor) {
+      // WME's native panel can render slightly after the SDK's selection-changed event fires —
+      // one short retry covers that race without polling indefinitely.
+      if (!attempt) setTimeout(() => injectNativeQuickActions(kind, 1), 150);
+      return;
+    }
+
+    const row = document.createElement('div');
+    row.className = NATIVE_QUICK_ACTIONS_CLASS;
+    for (const type of types) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `wmereq-btn wmereq-btn-sm wmereq-btn-${type.replace('_', '-')}`;
+      btn.title = `Quick-submit a ${describeType(type)} request`;
+      btn.textContent = quickActionLabel(type);
+      btn.dataset.wmereqQaType = type;
+      btn.addEventListener('click', () => quickSubmit(type, showFabStatus));
+      row.appendChild(btn);
+    }
+    anchor.insertAdjacentElement('afterend', row);
+  }
+
   // ── Permalink builder ─────────────────────────────────────────────────────────
   // Accepts one or more segments (kind = 'segment', the default), map notes
   // (kind = 'mapComment'), or places (kind = 'venue'); Waze permalinks support a
@@ -1027,18 +1188,41 @@
     Other: 'Other Place Update',
   };
 
-  // Which request types show the reason modal before submitting, and with what title/chips.
-  const REASON_MODAL_CONFIG = {
-    downlock: { title: 'Downlock Reason', reasons: DOWNLOCK_REASONS, tooltips: DOWNLOCK_REASON_TOOLTIPS },
-    accept_pur: { title: 'Accept PUR Reason', reasons: PUR_REASONS, tooltips: PUR_REASON_TOOLTIPS },
-    decline_pur: { title: 'Decline PUR Reason', reasons: PUR_REASONS, tooltips: PUR_REASON_TOOLTIPS },
+  // Reasons for locking/unlocking a place — distinct from DOWNLOCK_REASONS above, which are
+  // road-attribute-specific and don't apply once downlock also covers venues.
+  const PLACE_LOCK_REASONS = ['Vandalism', 'Spam/Abuse', 'Incorrect Lock', 'Rank Change', 'Other'];
+  const PLACE_LOCK_REASON_TOOLTIPS = {
+    Vandalism: 'Protect against vandalism',
+    'Spam/Abuse': 'Repeated spam or abusive edits',
+    'Incorrect Lock': 'Lock level was set incorrectly',
+    'Rank Change': "Editor's rank no longer matches the lock level",
+    Other: 'Other reason',
   };
 
+  // Resolves which reason-modal chips to show for a given (type, entity kind) pair — a
+  // function rather than a flat map because downlock's chips depend on what's selected: a
+  // segment gets the road-attribute reasons, a place gets the lock-specific ones. Returns
+  // null for types with no reason step (currently just imagery).
+  function getReasonModalConfig(type, kind) {
+    if (type === 'downlock') {
+      return kind === 'venue'
+        ? { title: 'Downlock Reason', reasons: PLACE_LOCK_REASONS, tooltips: PLACE_LOCK_REASON_TOOLTIPS }
+        : { title: 'Downlock Reason', reasons: DOWNLOCK_REASONS, tooltips: DOWNLOCK_REASON_TOOLTIPS };
+    }
+    if (type === 'uplock') return { title: 'Uplock Reason', reasons: PLACE_LOCK_REASONS, tooltips: PLACE_LOCK_REASON_TOOLTIPS };
+    if (type === 'accept_pur') return { title: 'Accept PUR Reason', reasons: PUR_REASONS, tooltips: PUR_REASON_TOOLTIPS };
+    if (type === 'decline_pur') return { title: 'Decline PUR Reason', reasons: PUR_REASONS, tooltips: PUR_REASON_TOOLTIPS };
+    return null;
+  }
+
   // Shows quick-pick reason chips (from `reasons`/`tooltips`) plus a free-text field, under
-  // the given `title`. Resolves { confirmed: false } if cancelled, or
-  // { confirmed: true, reason } otherwise (reason is '' if nothing was picked/typed but the
-  // user chose to continue).
-  function openReasonModal(title, reasons, tooltips) {
+  // the given `title`. When `requireLevel` is set, also shows a Target Lock Level select that
+  // must be filled before Continue proceeds — used for uplock's quick-submit paths (FAB and
+  // in-panel quick buttons), where there's no current lock rank to infer a level from; the
+  // user is explicitly choosing how high to raise it. Resolves { confirmed: false } if
+  // cancelled, or { confirmed: true, reason, level } otherwise (reason is '' if nothing was
+  // picked/typed but the user chose to continue; level is null unless requireLevel was set).
+  function openReasonModal({ title, reasons, tooltips, requireLevel }) {
     return new Promise((resolve) => {
       const selected = new Set();
       const dlg = document.createElement('div');
@@ -1046,6 +1230,12 @@
       dlg.innerHTML = `
         <div class="wmereq-dialog">
           <h4>${escHtml(title)}</h4>
+          ${requireLevel ? `
+          <label>Target Lock Level</label>
+          <select id="wmereq-reason-level">
+            <option value="">— select —</option>
+            ${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}">${n}</option>`).join('')}
+          </select>` : ''}
           <div class="wmereq-hint">Select one or more quick reasons, or add your own below.</div>
           <div class="wmereq-reason-chips">
             ${reasons.map((r) => `<button type="button" class="wmereq-chip" data-reason="${escHtml(r)}" title="${escHtml(tooltips[r] || r)}">${escHtml(r)}</button>`).join('')}
@@ -1067,16 +1257,18 @@
         });
       });
 
-      function close(confirmed, reason) {
+      function close(confirmed, reason, level) {
         document.body.removeChild(dlg);
-        resolve(confirmed ? { confirmed: true, reason } : { confirmed: false, reason: null });
+        resolve(confirmed ? { confirmed: true, reason, level } : { confirmed: false, reason: null, level: null });
       }
 
       dlg.querySelector('#wmereq-reason-confirm').addEventListener('click', () => {
+        const levelSel = dlg.querySelector('#wmereq-reason-level');
+        if (requireLevel && !levelSel.value) { levelSel.focus(); return; }
         const custom = dlg.querySelector('#wmereq-reason-custom').value.trim();
         const parts = [...selected];
         if (custom) parts.push(custom);
-        close(true, parts.join(', '));
+        close(true, parts.join(', '), levelSel ? parseInt(levelSel.value) : null);
       });
       dlg.querySelector('#wmereq-reason-cancel').addEventListener('click', () => close(false));
       dlg.addEventListener('click', (e) => { if (e.target === dlg) close(false); });
@@ -1093,9 +1285,12 @@
     if (!countryId) { showStatus('Please select a country.', 'error'); return; }
     if (LOCK_GATED_TYPES.includes(type) && !lockLevel) { showStatus('Please select a lock level.', 'error'); return; }
 
-    if (REASON_MODAL_CONFIG[type]) {
-      const cfg = REASON_MODAL_CONFIG[type];
-      const { confirmed, reason } = await openReasonModal(cfg.title, cfg.reasons, cfg.tooltips);
+    const entity = getSelectedEntity();
+    const cfg = getReasonModalConfig(type, entity ? entity.kind : null);
+    if (cfg) {
+      // requireLevel is deliberately omitted here — the panel form already has its own
+      // explicit Lock Level select above, so the reason modal doesn't need to duplicate it.
+      const { confirmed, reason } = await openReasonModal(cfg);
       if (!confirmed) return;
       if (reason) notes = notes ? `Reason: ${reason}\n${notes}` : `Reason: ${reason}`;
     }
@@ -1106,11 +1301,13 @@
   // Quick submit from the floating action buttons, using the currently selected
   // entity's inferred country/region and lock level (no need to open the panel).
   // Each type only accepts certain entity kinds — see TYPE_ENTITY_KINDS.
-  async function quickSubmit(type) {
+  // `statusFn` defaults to the floating bubble (for the map-side FAB buttons) but the
+  // in-panel quick-action buttons pass showStatus instead, so feedback lands in the panel.
+  async function quickSubmit(type, statusFn = showFabStatus) {
     const entity = getSelectedEntity();
-    if (!entity || !entity.items.length) { showFabStatus('Select a segment, map note, or place first.', 'error'); return; }
+    if (!entity || !entity.items.length) { statusFn('Select a segment, map note, or place first.', 'error'); return; }
     if (!TYPE_ENTITY_KINDS[type].includes(entity.kind)) {
-      showFabStatus(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
+      statusFn(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
       return;
     }
 
@@ -1120,25 +1317,39 @@
     // venues/notes fall back to the view-based (top country/state) detection.
     const countryId = resolveCurrentCountryId(isSegment ? item : null);
     const regionId = resolveCurrentRegionId(isSegment ? item : null);
-    const lockRankRaw = entity.kind === 'segment' || entity.kind === 'venue' ? pick(item, ['lockRank', 'lockLevel']) : null;
-    const lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
 
-    if (!countryId) { showFabStatus('Could not detect the country — use the panel.', 'error'); return; }
-    if (LOCK_GATED_TYPES.includes(type) && !lockLevel) { showFabStatus('Selected entity has no lock level.', 'error'); return; }
+    // Uplock has no current level to infer from — the whole point is asking for a *higher*
+    // level than what's set now, so the target has to be an explicit choice (via the reason
+    // modal's level select below), not read off the entity.
+    let lockLevel = null;
+    if (type !== 'uplock') {
+      const lockRankRaw = entity.kind === 'segment' || entity.kind === 'venue' ? pick(item, ['lockRank', 'lockLevel']) : null;
+      lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
+    }
+
+    if (!countryId) { statusFn('Could not detect the country — use the panel.', 'error'); return; }
+    if (LOCK_GATED_TYPES.includes(type) && type !== 'uplock' && !lockLevel) {
+      statusFn('Selected entity has no lock level.', 'error');
+      return;
+    }
 
     let notes = null;
-    if (REASON_MODAL_CONFIG[type]) {
-      const cfg = REASON_MODAL_CONFIG[type];
-      const { confirmed, reason } = await openReasonModal(cfg.title, cfg.reasons, cfg.tooltips);
+    const cfg = getReasonModalConfig(type, entity.kind);
+    if (cfg) {
+      const requireLevel = type === 'uplock';
+      const { confirmed, reason, level } = await openReasonModal({ ...cfg, requireLevel });
       if (!confirmed) return;
+      if (requireLevel) lockLevel = level;
       notes = reason ? `Reason: ${reason}` : null;
     }
 
-    await doSubmit(type, { countryId, regionId, lockLevel, notes, status: showFabStatus });
+    if (type === 'uplock' && !lockLevel) { statusFn('Please select a target lock level.', 'error'); return; }
+
+    await doSubmit(type, { countryId, regionId, lockLevel, notes, status: statusFn });
   }
 
   function describeType(type) {
-    return { downlock: 'Downlock', imagery: 'Imagery', accept_pur: 'Accept PUR', decline_pur: 'Decline PUR' }[type] || type;
+    return { downlock: 'Downlock', uplock: 'Uplock', imagery: 'Imagery', accept_pur: 'Accept PUR', decline_pur: 'Decline PUR' }[type] || type;
   }
 
   function describeKind(kind) {
@@ -1344,13 +1555,15 @@
 
   function disableButtons(disabled) {
     [
-      'wmereq-btn-submit-downlock', 'wmereq-btn-submit-imagery',
+      'wmereq-btn-submit-downlock', 'wmereq-btn-submit-uplock', 'wmereq-btn-submit-imagery',
       'wmereq-btn-submit-accept-pur', 'wmereq-btn-submit-decline-pur',
-      'wmereq-fab-downlock', 'wmereq-fab-imagery', 'wmereq-fab-accept-pur', 'wmereq-fab-decline-pur',
+      'wmereq-fab-downlock', 'wmereq-fab-uplock', 'wmereq-fab-imagery',
+      ...QUICK_ACTION_BUTTON_PREFIXES.flatMap((prefix) => QUICK_ACTION_TYPES.map((type) => `${prefix}-${type.replace('_', '-')}`)),
     ].forEach((id) => {
       const btn = byId(id);
       if (btn) btn.disabled = disabled;
     });
+    document.querySelectorAll(`.${NATIVE_QUICK_ACTIONS_CLASS} button`).forEach((btn) => { btn.disabled = disabled; });
   }
 
   function showFabStatus(msg, type) {
