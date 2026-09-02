@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.8.0
+// @version      2.8.1
 // @description  Send downlock, uplock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
@@ -733,6 +733,23 @@
     return entity && entity.kind === 'segment' ? entity.items : [];
   }
 
+  // Buckets items by their own current lock level (WME's 0-based rank, converted to the
+  // 1-based display level used everywhere else in this file), preserving the order each
+  // level was first seen. Items with no lock info of their own land in a `level: null`
+  // bucket. Used to split a mixed-lock-level selection into separate requests — see
+  // doSubmit()'s use of this for segments.
+  function groupByLockLevel(items) {
+    const order = [];
+    const buckets = new Map();
+    for (const item of items) {
+      const raw = pick(item, ['lockRank', 'lockLevel']);
+      const level = raw != null ? raw + 1 : null;
+      if (!buckets.has(level)) { buckets.set(level, []); order.push(level); }
+      buckets.get(level).push(item);
+    }
+    return order.map((level) => ({ level, items: buckets.get(level) }));
+  }
+
   // Returns the first defined value among several possible field-name spellings,
   // since exact field casing on SDK objects isn't confirmed by the public docs.
   function pick(obj, keys) {
@@ -820,8 +837,15 @@
     }
 
     const segments = entity.items;
+    const lockLevels = [...new Set(segments.map((s) => {
+      const raw = pick(s, ['lockRank', 'lockLevel']);
+      return raw != null ? raw + 1 : null;
+    }))].filter((l) => l != null);
+    const mixedLockHint = lockLevels.length > 1
+      ? ` — mixed lock levels (${lockLevels.sort((a, b) => a - b).join(', ')}); downlock requests will be sent as separate messages per level`
+      : '';
     const multiHint = segments.length > 1
-      ? `<div class="wmereq-hint">${segments.length} segments selected — permalink will include all of them.</div>`
+      ? `<div class="wmereq-hint">${segments.length} segments selected${mixedLockHint} — permalink will include all of them.</div>`
       : '';
 
     const seg = segments[0];
@@ -1321,9 +1345,12 @@
     // Uplock has no current level to infer from — the whole point is asking for a *higher*
     // level than what's set now, so the target has to be an explicit choice (via the reason
     // modal's level select below), not read off the entity.
+    // This lockLevel is only a fallback default (used as-is for venues/notes, and for any
+    // segment that has no lock data of its own) — doSubmit() re-derives the real per-segment
+    // levels itself and splits mixed-level segment selections into separate requests.
     let lockLevel = null;
-    if (type !== 'uplock') {
-      const lockRankRaw = entity.kind === 'segment' || entity.kind === 'venue' ? pick(item, ['lockRank', 'lockLevel']) : null;
+    if (type !== 'uplock' && (entity.kind === 'segment' || entity.kind === 'venue')) {
+      const lockRankRaw = entity.items.map((it) => pick(it, ['lockRank', 'lockLevel'])).find((r) => r != null);
       lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
     }
 
@@ -1364,48 +1391,73 @@
       return;
     }
 
-    const permalink = buildPermalink(entity.items, entity.kind);
     const { userName, editorRank } = getCurrentUserInfo();
+    const parsedLockLevel = lockLevel ? parseInt(lockLevel) : null;
 
-    if (LOCK_GATED_TYPES.includes(type) && lockLevel && editorRank != null && editorRank >= parseInt(lockLevel)) {
-      status(`Your edit rank (${editorRank}) already covers this lock level (${lockLevel}) — no ${describeType(type).toLowerCase()} request needed.`, 'error');
-      return;
-    }
+    // A segment selection can mix lock levels (e.g. some L4, some L5) — one bundled
+    // request with a single lock_level would be wrong for whichever segments don't match
+    // it, so split into one request per level instead. Only meaningful for lock-gated
+    // types, and not for uplock even among those: there the lock level is an explicit
+    // *target* the user picks (via the reason modal), not each segment's current level,
+    // so there's nothing of its own to group by.
+    const groups = LOCK_GATED_TYPES.includes(type) && type !== 'uplock' && entity.kind === 'segment'
+      ? groupByLockLevel(entity.items)
+      : [{ level: parsedLockLevel, items: entity.items }];
 
-    const body = {
-      country_id: parseInt(countryId),
-      region_id: regionId ? parseInt(regionId) : null,
-      type,
-      permalink,
-      notes: notes || null,
-      submitted_by: userName || null,
-      editor_rank: editorRank,
-      ...(LOCK_GATED_TYPES.includes(type) && lockLevel ? { lock_level: parseInt(lockLevel) } : {}),
-    };
-
-    // Uploaded (if any) before creating the request, and its key attached to the create
-    // body — not as a follow-up call — so it's already present when notifications fire.
+    // Uploaded once (if any) and its key reused across every group's request — not
+    // re-uploaded per group — so it's already present when notifications fire.
+    let screenshotKey = null;
     if (capturedScreenshotBlob) {
       status('Uploading screenshot…', 'info');
       try {
         const upload = await apiPostBlob('/screenshots', capturedScreenshotBlob);
-        body.screenshot_key = upload.key;
+        screenshotKey = upload.key;
       } catch (e) {
         log('Screenshot upload failed, continuing without it: ' + e.message);
       }
     }
 
-    log(`doSubmit: request body = ${JSON.stringify(body)}`);
-
-    status('Submitting…', 'info');
     disableButtons(true);
-
+    const results = [];
     try {
-      const result = await apiPost('/requests', body);
-      status(`Request #${result.id} submitted successfully.`, 'ok');
-      capturedScreenshotBlob = null;
-      updateScreenshotButton();
-      clearForm();
+      for (const group of groups) {
+        // Segments with no lock data of their own (group.level == null) fall back to
+        // whatever level was passed in (manual dropdown choice or the FAB's inferred one).
+        const groupLevel = group.level != null ? group.level : parsedLockLevel;
+
+        if (LOCK_GATED_TYPES.includes(type) && groupLevel && editorRank != null && editorRank >= groupLevel) {
+          status(`Your edit rank (${editorRank}) already covers lock level ${groupLevel} — skipping ${group.items.length} segment(s).`, 'error');
+          continue;
+        }
+
+        const body = {
+          country_id: parseInt(countryId),
+          region_id: regionId ? parseInt(regionId) : null,
+          type,
+          permalink: buildPermalink(group.items, entity.kind),
+          notes: notes || null,
+          submitted_by: userName || null,
+          editor_rank: editorRank,
+          ...(LOCK_GATED_TYPES.includes(type) && groupLevel ? { lock_level: groupLevel } : {}),
+          ...(screenshotKey ? { screenshot_key: screenshotKey } : {}),
+        };
+
+        log(`doSubmit: request body = ${JSON.stringify(body)}`);
+        status(groups.length > 1 ? `Submitting L${groupLevel ?? '?'} request…` : 'Submitting…', 'info');
+        results.push(await apiPost('/requests', body));
+      }
+
+      if (results.length) {
+        status(
+          results.length > 1
+            ? `${results.length} requests submitted successfully (#${results.map((r) => r.id).join(', #')}).`
+            : `Request #${results[0].id} submitted successfully.`,
+          'ok',
+        );
+        capturedScreenshotBlob = null;
+        updateScreenshotButton();
+        clearForm();
+      }
     } catch (e) {
       status(`Error: ${e.message}`, 'error');
     } finally {
