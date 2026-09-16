@@ -21,13 +21,17 @@
 		// is same-origin and unaffected by this. Includes both waze.com and www.waze.com
 		// since Waze's own generated links use the bare domain while the app may serve under www.
 		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wazetools.com",
-		// The "From" address for email notifications sent via Postmark — must be a verified
-		// Sender Signature (or a domain you've verified) in your Postmark account.
-		// The Postmark Server API Token itself is a secret, not a var — see DEPLOYMENT.md.
-		"POSTMARK_FROM_EMAIL": "notifications@mail.wazetools.com",
+		// The "From" address for auth emails (password reset / invite) sent via Postmark —
+		// must be a verified Sender Signature (or a domain you've verified) in your Postmark
+		// account. The Postmark Server API Token itself is a secret, not a var — see DEPLOYMENT.md.
+		"POSTMARK_FROM_EMAIL": "requests@mail.wazetools.com",
 		// The dashboard's own deployed origin — required so invite/password-reset emails
 		// link to an absolute URL instead of a bare path.
 		"BETTER_AUTH_URL": "https://requests.wazetools.com",
+		// Discord OAuth application's Client ID — not secret (it's embedded in the browser
+		// authorize-URL anyway). The Client Secret is a Worker secret — see DEPLOYMENT.md.
+		// Placeholder; replace with your own Discord application's Client ID.
+		"DISCORD_CLIENT_ID": "1549709267475374100",
 		// Web Push VAPID public key — safe to expose (it's sent to the browser as
 		// applicationServerKey). The matching private key is WEB_PUSH_VAPID_PRIVATE_JWK,
 		// a secret — see DEPLOYMENT.md. Placeholder; replace with your own generated pair.

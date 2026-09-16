@@ -19,6 +19,7 @@ import {
   Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { usePostHog } from '@posthog/react'
 import { Bell, Camera, CircleCheck, Rss, Trash2, X } from 'lucide-react'
 import {
   useCountries,
@@ -35,6 +36,7 @@ import {
 import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
 import { authClient } from '@/lib/auth-client'
 import { isPushSupported } from '@/lib/push-client'
+import TableLoadingRow from '@/components/TableLoadingRow'
 
 export const Route = createFileRoute('/requests')({ component: Dashboard })
 
@@ -48,6 +50,7 @@ const TYPE_OPTIONS = [
 ]
 
 function Dashboard() {
+  const posthog = usePostHog()
   const { data: session } = authClient.useSession()
   const canEdit = !!session
   const [countryId, setCountryId] = useState<string | null>(null)
@@ -97,6 +100,12 @@ function Dashboard() {
   function applyFilters() {
     setPage(1)
     setAppliedFilter({ countryId, regionId, type, status })
+    posthog.capture('request_filters_applied', {
+      country_id: countryId ? Number(countryId) : null,
+      region_id: regionId ? Number(regionId) : null,
+      request_type: type,
+      request_status: status,
+    })
   }
 
   function handleCountryChange(value: string | null) {
@@ -330,15 +339,7 @@ function Dashboard() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {requestsQuery.isLoading && (
-                <Table.Tr>
-                  <Table.Td colSpan={canEdit ? 11 : 9}>
-                    <Text c="dimmed" ta="center">
-                      Loading…
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
+              {requestsQuery.isLoading && <TableLoadingRow colSpan={canEdit ? 11 : 9} />}
               {requestsQuery.isError && (
                 <Table.Tr>
                   <Table.Td colSpan={canEdit ? 11 : 9}>

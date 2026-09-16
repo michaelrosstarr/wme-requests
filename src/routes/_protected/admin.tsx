@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Alert, Badge, Button, Card, Container, Group, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
+import { Alert, Badge, Button, Card, Center, Container, Group, Loader, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { Globe, Info, KeyRound, Mail, MapPin, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
 import {
@@ -155,7 +155,7 @@ function Admin() {
             )}
           </Group>
           <Stack gap="xs">
-            {countriesQuery.isLoading && <Text c="dimmed">Loading…</Text>}
+            {countriesQuery.isLoading && <CardListLoader />}
             {!countriesQuery.isLoading && !countries.length && <Text c="dimmed">No countries yet.</Text>}
             {countries.map((c) => (
               <Card key={c.id} withBorder radius="sm" p="xs">
@@ -288,7 +288,7 @@ function Admin() {
           </Group>
           <Stack gap="xs">
             {!selectedCountryId && <Text c="dimmed">Select a country to see channels</Text>}
-            {selectedCountryId && channelsQuery.isLoading && <Text c="dimmed">Loading…</Text>}
+            {selectedCountryId && channelsQuery.isLoading && <CardListLoader />}
             {selectedCountryId && channelsQuery.data && !channels.length && (
               <Text c="dimmed">No channels configured for this scope.</Text>
             )}
@@ -371,7 +371,7 @@ function Admin() {
           )}
         </Group>
         <Stack gap="xs" mb="md">
-          {credentialsQuery.isLoading && <Text c="dimmed">Loading…</Text>}
+          {credentialsQuery.isLoading && <CardListLoader />}
           {!credentialsQuery.isLoading && !googleCredentials.length && (
             <Text c="dimmed" size="sm">
               No Google service accounts yet.
@@ -429,6 +429,7 @@ function Admin() {
           </Button>
         </Group>
         <Stack gap="xs">
+          {credentialsQuery.isLoading && <CardListLoader />}
           {!credentialsQuery.isLoading && !emailCredentials.length && (
             <Text c="dimmed" size="sm">
               No email credentials yet — add your own Postmark, Mailgun, or SMTP credential to use it in an email
@@ -488,7 +489,7 @@ function Admin() {
             </Group>
           </Group>
           <Stack gap="xs">
-            {usersQuery.isLoading && <Text c="dimmed">Loading…</Text>}
+            {usersQuery.isLoading && <CardListLoader />}
             {!usersQuery.isLoading && !users.length && <Text c="dimmed">No users yet.</Text>}
             {users.map((u) => (
               <Card key={u.id} withBorder radius="sm" p="xs">
@@ -575,5 +576,13 @@ function Admin() {
         onClose={() => setAccessModal({ opened: false, user: null })}
       />
     </Container>
+  )
+}
+
+function CardListLoader() {
+  return (
+    <Center py="sm">
+      <Loader size="sm" />
+    </Center>
   )
 }

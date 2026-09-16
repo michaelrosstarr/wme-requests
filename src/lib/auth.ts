@@ -1,5 +1,6 @@
 import { env, waitUntil } from 'cloudflare:workers'
 import { betterAuth } from 'better-auth'
+import { captcha } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { withCloudflare } from 'better-auth-cloudflare'
 import { sendPostmarkEmail } from './postmark'
@@ -17,6 +18,30 @@ export function getAuth() {
     ...withCloudflare(
       { d1Native: env.DB, autoDetectIpAddress: false, geolocationTracking: false },
       {
+        socialProviders: {
+          discord: {
+            clientId: env.DISCORD_CLIENT_ID,
+            clientSecret: env.DISCORD_CLIENT_SECRET,
+            // Mirrors emailAndPassword's disableSignUp below: "Sign in with Discord" only
+            // works for an email that already has a user row (either linking onto it, per
+            // the `account` config, or a Discord account already linked to it). It never
+            // creates a brand-new account — that stays admin-only via /admin.
+            disableImplicitSignUp: true,
+          },
+        },
+        account: {
+          accountLinking: {
+            enabled: true,
+            // Discord's own "email verified" flag is enough to trust the match without
+            // also requiring email-verification round-trip on this app's side.
+            trustedProviders: ['discord'],
+            // Admin-created/invited users never go through this app's own email-verification
+            // flow (see inviteUser/createUser in src/lib/users.ts), so their `emailVerified`
+            // stays unset. Requiring it here would mean Discord could never auto-link onto
+            // an existing account, defeating the point.
+            requireLocalEmailVerified: false,
+          },
+        },
         emailAndPassword: {
           enabled: true,
           // No public sign-up UI is linked in the dashboard; the first admin account
@@ -36,8 +61,15 @@ export function getAuth() {
             })
           },
         },
-        // Cookie-setting plugin for TanStack Start must come last.
-        plugins: [tanstackStartCookies()],
+        plugins: [
+          // Requires an `x-captcha-response` header carrying the widget token (see the
+          // Turnstile component wired into /login and /forgot-password). Its default
+          // endpoints — /sign-up/email, /sign-in/email, /request-password-reset — already
+          // cover both, even though sign-up itself stays disabled above.
+          captcha({ provider: 'cloudflare-turnstile', secretKey: env.TURNSTILE_SECRET_KEY }),
+          // Cookie-setting plugin for TanStack Start must come last.
+          tanstackStartCookies(),
+        ],
       },
     ),
   })

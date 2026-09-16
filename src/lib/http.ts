@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
 import { getAuth } from './auth'
 import { getUserAccess, type UserAccess } from './access'
+import { captureServerException } from './posthog-server'
 
 export function json(data: unknown, status = 200, extra: HeadersInit = {}) {
   return new Response(JSON.stringify(data), {
@@ -72,8 +73,8 @@ export function apiRoute(handlers: Partial<Record<'GET' | 'POST' | 'PUT' | 'DELE
     const handler = typeof entry === 'function' ? entry : entry.handler
     wrapped[method] = async (ctx) => {
       const origin = ctx.request.headers.get('Origin')
+      let access: UserAccess | null = null
       try {
-        let access: UserAccess | null = null
         if (!isPublic) {
           const session = await getAuth().api.getSession({ headers: ctx.request.headers })
           if (!session) return withCors(err('Unauthorized', 401), origin)
@@ -81,6 +82,7 @@ export function apiRoute(handlers: Partial<Record<'GET' | 'POST' | 'PUT' | 'DELE
         }
         return withCors(await handler({ ...ctx, access }), origin)
       } catch (e) {
+        await captureServerException(e, ctx.request, access?.userId)
         console.error(e)
         return withCors(err('Internal server error', 500), origin)
       }

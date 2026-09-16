@@ -11,12 +11,15 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProtectedRouteImport } from './routes/_protected'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ProtectedAdminRouteImport } from './routes/_protected/admin'
+import { Route as ProtectedReportsRouteImport } from './routes/_protected/reports'
 import { Route as ApiCountriesRouteImport } from './routes/api/countries'
 import { Route as ApiCredentialsRouteImport } from './routes/api/credentials'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
@@ -53,6 +56,11 @@ const ProtectedRoute = ProtectedRouteImport.update({
   id: '/_protected',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HelpRoute = HelpRouteImport.update({
   id: '/help',
   path: '/help',
@@ -63,9 +71,9 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ReportsRoute = ReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RequestsRoute = RequestsRouteImport.update({
@@ -78,9 +86,19 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProtectedAdminRoute = ProtectedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => ProtectedRoute,
+} as any)
+const ProtectedReportsRoute = ProtectedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
   getParentRoute: () => ProtectedRoute,
 } as any)
 const ApiCountriesRoute = ApiCountriesRouteImport.update({
@@ -216,12 +234,15 @@ const ApiUsersIdResetPasswordRoute = ApiUsersIdResetPasswordRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
-  '/reports': typeof ReportsRoute
+  '/privacy': typeof PrivacyRoute
   '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/admin': typeof ProtectedAdminRoute
+  '/reports': typeof ProtectedReportsRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
@@ -251,12 +272,15 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
-  '/reports': typeof ReportsRoute
+  '/privacy': typeof PrivacyRoute
   '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/admin': typeof ProtectedAdminRoute
+  '/reports': typeof ProtectedReportsRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
@@ -288,12 +312,15 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_protected': typeof ProtectedRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
-  '/reports': typeof ReportsRoute
+  '/privacy': typeof PrivacyRoute
   '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/_protected/admin': typeof ProtectedAdminRoute
+  '/_protected/reports': typeof ProtectedReportsRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
@@ -325,12 +352,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/forgot-password'
     | '/help'
     | '/login'
-    | '/reports'
+    | '/privacy'
     | '/requests'
     | '/reset-password'
+    | '/terms'
     | '/admin'
+    | '/reports'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
@@ -360,12 +390,15 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/forgot-password'
     | '/help'
     | '/login'
-    | '/reports'
+    | '/privacy'
     | '/requests'
     | '/reset-password'
+    | '/terms'
     | '/admin'
+    | '/reports'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
@@ -396,12 +429,15 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_protected'
+    | '/forgot-password'
     | '/help'
     | '/login'
-    | '/reports'
+    | '/privacy'
     | '/requests'
     | '/reset-password'
+    | '/terms'
     | '/_protected/admin'
+    | '/_protected/reports'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
@@ -433,11 +469,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProtectedRoute: typeof ProtectedRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   HelpRoute: typeof HelpRoute
   LoginRoute: typeof LoginRoute
-  ReportsRoute: typeof ReportsRoute
+  PrivacyRoute: typeof PrivacyRoute
   RequestsRoute: typeof RequestsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  TermsRoute: typeof TermsRoute
   ApiCountriesRoute: typeof ApiCountriesRouteWithChildren
   ApiCredentialsRoute: typeof ApiCredentialsRouteWithChildren
   ApiFeedRoute: typeof ApiFeedRoute
@@ -471,6 +509,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/help': {
       id: '/help'
       path: '/help'
@@ -485,11 +530,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/reports': {
-      id: '/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof ReportsRouteImport
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/requests': {
@@ -506,11 +551,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_protected/admin': {
       id: '/_protected/admin'
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof ProtectedAdminRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
+    '/_protected/reports': {
+      id: '/_protected/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ProtectedReportsRouteImport
       parentRoute: typeof ProtectedRoute
     }
     '/api/countries': {
@@ -700,10 +759,12 @@ declare module '@tanstack/react-router' {
 
 interface ProtectedRouteChildren {
   ProtectedAdminRoute: typeof ProtectedAdminRoute
+  ProtectedReportsRoute: typeof ProtectedReportsRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedAdminRoute: ProtectedAdminRoute,
+  ProtectedReportsRoute: ProtectedReportsRoute,
 }
 
 const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(
@@ -814,11 +875,13 @@ const ApiPushSubscriptionsRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProtectedRoute: ProtectedRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   HelpRoute: HelpRoute,
   LoginRoute: LoginRoute,
-  ReportsRoute: ReportsRoute,
+  PrivacyRoute: PrivacyRoute,
   RequestsRoute: RequestsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  TermsRoute: TermsRoute,
   ApiCountriesRoute: ApiCountriesRouteWithChildren,
   ApiCredentialsRoute: ApiCredentialsRouteWithChildren,
   ApiFeedRoute: ApiFeedRoute,

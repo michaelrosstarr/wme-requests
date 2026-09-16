@@ -8,10 +8,8 @@ function emptyCounts(): UserCounts {
   return Object.fromEntries(REQUEST_TYPES.map((t) => [t, 0])) as UserCounts
 }
 
-// `access` is null for anonymous (public, view-only) callers — see getRequests in
-// src/lib/requests.ts for why null means unrestricted rather than zero rows.
-export async function getUserReport(access: UserAccess | null) {
-  const scope = access ? countryScopeSQL(access, 'requests') : null
+export async function getUserReport(access: UserAccess) {
+  const scope = countryScopeSQL(access, 'requests')
   const where = ["submitted_by IS NOT NULL", "submitted_by != ''"]
   const params: number[] = []
   if (scope) {

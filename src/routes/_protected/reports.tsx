@@ -2,8 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Badge, Container, Paper, Progress, Table, Text, Title } from '@mantine/core'
 import { useUserReport } from '@/lib/queries'
 import { TypeBadge, TYPE_COLORS, TYPE_LABELS, REQUEST_TYPE_LIST } from '@/lib/labels'
+import TableLoadingRow from '@/components/TableLoadingRow'
 
-export const Route = createFileRoute('/reports')({ component: Reports })
+export const Route = createFileRoute('/_protected/reports')({ component: Reports })
 
 const COL_SPAN = 3 + REQUEST_TYPE_LIST.length
 
@@ -35,15 +36,7 @@ function Reports() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {isLoading && (
-                <Table.Tr>
-                  <Table.Td colSpan={COL_SPAN}>
-                    <Text c="dimmed" ta="center">
-                      Loading…
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
+              {isLoading && <TableLoadingRow colSpan={COL_SPAN} />}
               {isError && (
                 <Table.Tr>
                   <Table.Td colSpan={COL_SPAN}>

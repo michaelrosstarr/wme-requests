@@ -105,8 +105,8 @@ local dev.
 ## 7 — Configure Postmark for system emails (optional)
 
 This is only for the app's own transactional email — user invites and password resets (see
-step 10). It's separate from the `email` notification platform, which is BYOK and configured per
-user in the Credentials Manager (step 8) instead. Skip this step if you don't plan to invite
+step 12). It's separate from the `email` notification platform, which is BYOK and configured per
+user in the Credentials Manager (step 9) instead. Skip this step if you don't plan to invite
 users by email (you can still create accounts directly via `create-admin-user.mjs`/**Admin**).
 
 1. In your [Postmark](https://postmarkapp.com) account, verify a Sender Signature or domain to send from.
@@ -134,7 +134,51 @@ users by email (you can still create accounts directly via `create-admin-user.mj
    npm run cf-typegen
    ```
 
-## 8 — Configure the Credentials Manager (optional)
+## 8 — Configure Discord sign-in (optional)
+
+Lets users sign in with **Sign in with Discord** on the login page, in addition to
+email/password. It never creates a brand-new account on its own — sign-up is still admin-only
+(see step 12) — but if the Discord account's email matches an existing user, that user gets
+signed in and the Discord account is linked to them automatically, no separate "link your
+account" step required. Skip this step if you don't need it; the button still renders but fails
+until configured.
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), create a new
+   application, then under **OAuth2 → General** add a redirect:
+
+   ```
+   https://your-project.your-subdomain.workers.dev/api/auth/callback/discord
+   ```
+
+   (or your custom domain, matching step 6's `BETTER_AUTH_URL` — for local dev, also add
+   `http://localhost:3000/api/auth/callback/discord`).
+
+2. Set the Client ID as a plain var in `wrangler.jsonc` (it's not secret — it's embedded in the
+   browser authorize-URL anyway):
+
+   ```jsonc
+   "vars": {
+     "DISCORD_CLIENT_ID": "your-client-id"
+   }
+   ```
+
+3. Set the Client Secret as a secret (never in `wrangler.jsonc`):
+
+   ```bash
+   # Local development — appended to .dev.vars (already gitignored)
+   echo "DISCORD_CLIENT_SECRET=your-real-secret" >> .dev.vars
+
+   # Production
+   wrangler secret put DISCORD_CLIENT_SECRET
+   ```
+
+4. Regenerate the Worker's env types after touching `wrangler.jsonc` or `.dev.vars`:
+
+   ```bash
+   npm run cf-typegen
+   ```
+
+## 9 — Configure the Credentials Manager (optional)
 
 **Admin → Credentials** holds two kinds of reusable, encrypted-at-rest credential that
 notification channels reference instead of embedding a secret directly:
@@ -179,7 +223,7 @@ Skip this step if you're not using the `google_sheets` or `email` notification p
    [`worker-mailer`](https://www.npmjs.com/package/worker-mailer)) on port 587 or 465 — port 25
    isn't reachable from Workers.
 
-## 9 — Configure Web Push notifications (optional)
+## 10 — Configure Web Push notifications (optional)
 
 Unlike the channels above, Web Push isn't admin-configured — any signed-in user can click
 **Notify me** on the dashboard to subscribe their own browser to a country (optionally scoped to
@@ -223,7 +267,49 @@ a region and request type). Skip this step if you don't need browser push notifi
    npm run db:migrate:remote
    ```
 
-## 10 — Create your first admin account
+## 11 — Configure Cloudflare Turnstile (optional but recommended)
+
+Guards the sign-in and forgot-password forms against bots/credential-stuffing with a free
+Cloudflare Turnstile widget (via Better Auth's built-in `captcha` plugin — see
+`src/lib/auth.ts`). The button/form still work without it — the widget only renders, and the
+server only requires a token, once `VITE_PUBLIC_TURNSTILE_SITE_KEY` is set — but running
+public login/reset forms without it isn't recommended.
+
+1. Create a widget for your domain (add `--domain localhost` too if you want it in local
+   dev) with either the [Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile)
+   or Wrangler:
+
+   ```bash
+   npx wrangler turnstile widget create "Your App Login" \
+     --domain your-project.your-subdomain.workers.dev --domain localhost --mode managed
+   ```
+
+   This prints a `sitekey` (public) and a `secret` (private).
+
+2. Set the site key as a client-bundled var in `.env` (not `wrangler.jsonc` — it's baked in
+   at `vite build` time, same as `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`):
+
+   ```bash
+   echo "VITE_PUBLIC_TURNSTILE_SITE_KEY=your-site-key" >> .env
+   ```
+
+3. Set the secret key as a Worker secret (never in `wrangler.jsonc` or `.env`):
+
+   ```bash
+   # Local development — appended to .dev.vars (already gitignored)
+   echo "TURNSTILE_SECRET_KEY=your-real-secret" >> .dev.vars
+
+   # Production
+   wrangler secret put TURNSTILE_SECRET_KEY
+   ```
+
+4. Regenerate the Worker's env types after touching `.dev.vars`:
+
+   ```bash
+   npm run cf-typegen
+   ```
+
+## 12 — Create your first admin account
 
 There's no public sign-up page — sign-up is disabled at the API level. The very first account has
 to be provisioned directly in D1:
@@ -244,19 +330,20 @@ signed in: **Create** sets a password directly, **Invite** emails a link (via Po
 letting the person set their own password, and **Reset Password** re-sends that same link to an
 existing user. Invite/reset emails require step 7's Postmark config and step 6's `BETTER_AUTH_URL`.
 
-## 11 — Try it locally
+## 13 — Try it locally
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000` — the dashboard and `/reports` are viewable without signing in
-(read-only), but `/admin` redirects to `/login`. Sign in with the account from step 10, then set
+Open `http://localhost:3000` — the dashboard and `/requests` are viewable without signing in
+(read-only), but `/admin` and `/reports` redirect to `/login`. Sign in with the account from
+step 12, then set
 up at least one country and notification channel from the `/admin` page before moving on (see
 [README § Notification Channels](README.md#notification-channels) for the channel body fields
 and `custom_prefix` variables).
 
-## 12 — Deploy
+## 14 — Deploy
 
 ```bash
 npm run deploy
@@ -266,7 +353,7 @@ This builds and pushes the Worker to Cloudflare. Your app is now live at `https:
 
 If this is your very first deploy and you haven't run step 4's `db:migrate:remote` yet, do that now — the deployed Worker needs the schema in place before it can serve any API requests.
 
-## 13 — Point the userscript at your deployment
+## 15 — Point the userscript at your deployment
 
 Open [`userscript/wme-requests.user.js`](userscript/wme-requests.user.js) and update:
 
@@ -276,7 +363,7 @@ const DEFAULT_API_BASE = 'https://YOUR-PROJECT.YOUR-SUBDOMAIN.workers.dev';
 
 Then install the script in Tampermonkey (or Greasemonkey). If you'd rather not edit the file, you can also leave the default as a placeholder and set the real URL later from inside WME: open the **WME Requests** panel → **Settings** → paste your Workers URL into **API Base URL** → **Save**. That value is stored per-browser via `GM_setValue`, so it persists across script updates without touching the file.
 
-## 14 — Updating later
+## 16 — Updating later
 
 ```bash
 git pull
