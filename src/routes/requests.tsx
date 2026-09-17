@@ -399,8 +399,10 @@ function Dashboard() {
                       )}
                     </Group>
                   </Table.Td>
-                  <Table.Td>{r.submitted_by || '—'}</Table.Td>
-                  <Table.Td>{r.notes || '—'}</Table.Td>
+                  {/* Submitter names and notes are free-form user content — keep them out of
+                      autocapture so a note never lands in `$el_text`. See __root.tsx before_send. */}
+                  <Table.Td className="ph-no-capture">{r.submitted_by || '—'}</Table.Td>
+                  <Table.Td className="ph-no-capture">{r.notes || '—'}</Table.Td>
                   {/* <Table.Td>
                     <Select
                       size="xs"
