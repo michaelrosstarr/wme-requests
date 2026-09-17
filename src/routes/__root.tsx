@@ -55,6 +55,27 @@ function RootDocument({ children }: Readonly<{ children: React.ReactNode }>) {
   )
 }
 
+// Pages that render free-form user content in the DOM. Dead-click autocapture stores the
+// clicked element's text in `$el_text`, so on these pages that text can be a private request
+// note rather than a fixed interface label.
+const SENSITIVE_PATHS = ['/requests']
+
+function isSensitivePath(pathname: unknown): boolean {
+  if (typeof pathname !== 'string') return false
+  return SENSITIVE_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+}
+
+// Second layer behind the `ph-no-capture` class on the notes cells (see requests.tsx): drop
+// `$el_text` from dead-click events on sensitive pages in case a dead click still slips through.
+function stripSensitiveDeadClickText<T extends { event: string; properties?: Record<string, unknown> } | null>(
+  event: T,
+): T {
+  if (event?.event === '$dead_click' && isSensitivePath(event.properties?.$pathname)) {
+    delete event.properties?.$el_text
+  }
+  return event
+}
+
 function PostHogRoot({ children }: Readonly<{ children: React.ReactNode }>) {
   const apiKey = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN
   const apiHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST
@@ -81,6 +102,7 @@ function PostHogRoot({ children }: Readonly<{ children: React.ReactNode }>) {
         // No tracking until the cookie banner records a choice — see CookieConsent.tsx,
         // which calls opt_in_capturing() once the user accepts.
         opt_out_capturing_by_default: true,
+        before_send: stripSensitiveDeadClickText,
       }}
     >
       {children}
