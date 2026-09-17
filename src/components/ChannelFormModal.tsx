@@ -5,6 +5,8 @@ import { useForm } from '@mantine/form'
 import { useCreateChannel, useCredentials, useRegions, useUpdateChannel, type ChannelFormValues } from '@/lib/queries'
 import type { Channel } from '@/lib/types'
 import CredentialsModal from '@/components/CredentialsModal'
+import VariableTextInput from '@/components/VariableTextInput'
+import { CUSTOM_PREFIX_VARIABLES } from '@/lib/templateVariables'
 
 interface Props {
   opened: boolean
@@ -400,16 +402,15 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
                 </Group>
               </>
             )}
-            <TextInput
+            <VariableTextInput
               label="Custom Prefix (optional)"
               placeholder="e.g. L{lock_level}{country_code}"
-              description={
-                <>
-                  Prepended before the permalink on every message. Supports variables: {'{lock_level}'},{' '}
-                  {'{country_code}'}, {'{country_name}'}, {'{editor_rank}'}, {'{type}'}, {'{submitted_by}'}
-                </>
-              }
+              description="Prepended before the permalink on every message. Use the { } button to insert a variable."
               disabled={saving}
+              variables={CUSTOM_PREFIX_VARIABLES}
+              autosize
+              minRows={1}
+              maxRows={4}
               {...form.getInputProps('custom_prefix')}
             />
             <Group justify="flex-end">

@@ -17,6 +17,7 @@ import {
   useUsers,
 } from '@/lib/queries'
 import { CredentialTypeBadge, EventTypeBadge, PlatformBadge } from '@/lib/labels'
+import { CUSTOM_PREFIX_VARIABLES } from '@/lib/templateVariables'
 import type { AdminUser, Channel, Country, Credential } from '@/lib/types'
 import CountryFormModal from '@/components/CountryFormModal'
 import ChannelFormModal from '@/components/ChannelFormModal'
@@ -212,54 +213,14 @@ function Admin() {
             </Text>
             <Table withRowBorders={false} verticalSpacing={2} fz="xs">
               <Table.Tbody>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{lock_level}'}</code>
-                  </Table.Td>
-                  <Table.Td>Request's lock level (set for downlock, uplock, and PUR requests; empty for imagery)</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{country_code}'}</code>
-                  </Table.Td>
-                  <Table.Td>Channel's country code, e.g. ZA</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{country_name}'}</code>
-                  </Table.Td>
-                  <Table.Td>Channel's country name, e.g. South Africa</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{region_code}'}</code>
-                  </Table.Td>
-                  <Table.Td>Channel's region code, e.g. CA (empty if country-wide)</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{region_name}'}</code>
-                  </Table.Td>
-                  <Table.Td>Channel's region name, e.g. California (empty if country-wide)</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{editor_rank}'}</code>
-                  </Table.Td>
-                  <Table.Td>Submitter's WME editor rank</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{type}'}</code>
-                  </Table.Td>
-                  <Table.Td>downlock, uplock, imagery, accept_pur, or decline_pur</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Td>
-                    <code>{'{submitted_by}'}</code>
-                  </Table.Td>
-                  <Table.Td>Submitter's Waze username</Table.Td>
-                </Table.Tr>
+                {CUSTOM_PREFIX_VARIABLES.map((v) => (
+                  <Table.Tr key={v.key}>
+                    <Table.Td>
+                      <code>{`{${v.key}}`}</code>
+                    </Table.Td>
+                    <Table.Td>{v.description}</Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
             <Text size="xs" mt={4} c="dimmed">

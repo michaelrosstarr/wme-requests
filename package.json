@@ -16,7 +16,9 @@
     "cf-typegen": "wrangler types",
     "db:create": "wrangler d1 create wme-requests",
     "db:migrate:local": "wrangler d1 migrations apply wme-requests --local",
-    "db:migrate:remote": "wrangler d1 migrations apply wme-requests --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply wme-requests --remote",
+    "userscript:build": "npm --prefix userscript run build",
+    "userscript:typecheck": "npm --prefix userscript run typecheck"
   },
   "dependencies": {
     "@mantine/core": "^9.5.0",

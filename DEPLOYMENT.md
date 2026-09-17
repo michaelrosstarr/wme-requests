@@ -355,13 +355,15 @@ If this is your very first deploy and you haven't run step 4's `db:migrate:remot
 
 ## 15 — Point the userscript at your deployment
 
-Open [`userscript/wme-requests.user.js`](userscript/wme-requests.user.js) and update:
+Open [`userscript/wme-requests.user.js`](userscript/wme-requests.user.js) — the built script Tampermonkey actually installs — and update:
 
 ```js
 const DEFAULT_API_BASE = 'https://YOUR-PROJECT.YOUR-SUBDOMAIN.workers.dev';
 ```
 
 Then install the script in Tampermonkey (or Greasemonkey). If you'd rather not edit the file, you can also leave the default as a placeholder and set the real URL later from inside WME: open the **WME Requests** panel → **Settings** → paste your Workers URL into **API Base URL** → **Save**. That value is stored per-browser via `GM_setValue`, so it persists across script updates without touching the file.
+
+The script's source is TypeScript, at [`userscript/src/main.user.ts`](userscript/src/main.user.ts) — see [`userscript/README.md`](userscript/README.md) for the build. If you've set that up and plan to keep rebuilding, edit `DEFAULT_API_BASE` there instead: `npm run build` regenerates `userscript/wme-requests.user.js` and would overwrite an edit made directly in the built file.
 
 ## 16 — Updating later
 

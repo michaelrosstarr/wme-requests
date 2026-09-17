@@ -52,3 +52,40 @@ On supported Chromium browsers, attach a screenshot of the current map viewport 
 ## Support
 
 Found a bug or have a feature request? Open an issue on [GitHub](https://github.com/michaelrosstarr/wme-requests).
+
+## Development
+
+The script is written in TypeScript against Waze's official [`wme-sdk-typings`](https://web-assets.waze.com/wme_sdk_docs/production/latest/index.html#md:typescript-type-definitions), following the same rollup + `@rollup/plugin-typescript` setup as [bedo2991/wme-typescript](https://github.com/bedo2991/wme-typescript).
+
+```
+userscript/
+  src/main.user.ts   — the script itself
+  header.js          — the @-metadata block prepended to the release build
+  header-dev.js       — dev-mode metadata, @requires the local compiled output
+  rollup.config.mjs   — compiles src/main.user.ts → .out/main.user.js (IIFE)
+  scripts/concat.mjs  — prepends header.js to the compiled output, Prettier-formats it,
+                         and writes userscript/wme-requests.user.js
+```
+
+`wme-requests.user.js` at the top of this folder is a **generated file** — it's what `@updateURL`/`@downloadURL` point existing installs at, so it's committed, but it's produced by the build below rather than edited by hand.
+
+```bash
+cd userscript
+npm install
+npm run build       # compile + write userscript/wme-requests.user.js
+npm run typecheck    # tsc --noEmit, no build output
+npm run watch        # recompiles .out/main.user.js on save, for local dev — see below
+```
+
+### Local dev loop
+
+For iterating without reinstalling the script on every change:
+
+1. Enable ["Allow access to file URLs"](https://www.tampermonkey.net/faq.php?locale=en#Q204) for Tampermonkey.
+2. Run `npm run watch` — this keeps `.out/main.user.js` up to date as you edit `src/main.user.ts`.
+3. Copy `header-dev.js` into a new Tampermonkey script, and point its `@require` at the absolute path of `.out/main.user.js` on your machine.
+4. Reload the WME tab to pick up each recompile — no reinstall needed.
+
+### Releasing
+
+Bump `@version` in both `header.js` and (for consistency) `userscript/README.md`'s changelog, then run `npm run build` and commit the result.
