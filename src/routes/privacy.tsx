@@ -4,7 +4,7 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 export const Route = createFileRoute('/privacy')({ component: Privacy })
 
 const CONTACT_EMAIL = 'wazer@wazetools.com'
-const EFFECTIVE_DATE = '16 September 2026'
+const EFFECTIVE_DATE = '22 September 2026'
 
 function Privacy() {
   return (
@@ -264,9 +264,11 @@ function Privacy() {
           <Stack gap="sm">
             <Title order={2}>8. Data retention</Title>
             <Text>
-              We keep request records and account data for as long as they're operationally useful (e.g. to display
-              request history and Reports), and delete them when an admin removes a request, country, channel, or
-              user. Analytics events in PostHog follow PostHog's own retention settings for our account.
+              Request records (including notes, screenshots, and permalinks) are automatically and permanently
+              deleted 24 hours after submission, or sooner if an admin removes them manually. Account and
+              configuration data (users, countries, channels) is kept for as long as they're operationally useful,
+              and deleted when an admin removes them. Analytics events in PostHog follow PostHog's own retention
+              settings for our account.
             </Text>
           </Stack>
         </Card>

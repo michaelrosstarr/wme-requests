@@ -4,7 +4,7 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 export const Route = createFileRoute('/terms')({ component: Terms })
 
 const CONTACT_EMAIL = 'wazer@wazetools.com'
-const EFFECTIVE_DATE = '16 September 2026'
+const EFFECTIVE_DATE = '22 September 2026'
 
 function Terms() {
   return (
@@ -81,6 +81,11 @@ function Terms() {
               configured for the relevant country or region, and to display it on the dashboard and public request
               feed/RSS. You're responsible for making sure content you submit doesn't infringe anyone else's rights
               or violate applicable law.
+            </Text>
+            <Text>
+              Request records are automatically and permanently deleted 24 hours after submission. Any decision or
+              notification you want to keep a record of should be captured elsewhere (e.g. the notification channel
+              it was routed to) before that window closes.
             </Text>
           </Stack>
         </Card>

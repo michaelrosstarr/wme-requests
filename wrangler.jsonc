@@ -9,11 +9,16 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"main": "@tanstack/react-start/server-entry",
+	"main": "src/server-entry.ts",
 	"observability": {
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"triggers": {
+		// Daily at 03:00 UTC — purges requests older than 24h (see the `scheduled` handler
+		// in src/server-entry.ts and Terms of Service §4).
+		"crons": ["0 3 * * *"]
+	},
 	"vars": {
 		// Origins allowed to call the API cross-origin (comma-separated, or * for all).
 		// Restricted to Waze's own domains since the userscript is the only cross-origin
