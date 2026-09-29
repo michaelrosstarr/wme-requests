@@ -9,19 +9,40 @@ function emptyCounts(): UserCounts {
 }
 
 export async function getUserReport(access: UserAccess) {
-  const scope = countryScopeSQL(access, 'requests')
-  const where = ["submitted_by IS NOT NULL", "submitted_by != ''"]
-  const params: number[] = []
-  if (scope) {
-    where.push(scope.clause)
-    params.push(...scope.params)
+  // Requests are purged 24h after submission (see src/server-entry.ts), rolling their counts
+  // into request_stats first — so a full picture needs both: live rows for anything not yet
+  // purged, plus the aggregated historical counts.
+  const liveScope = countryScopeSQL(access, 'r')
+  const liveWhere = ["submitted_by IS NOT NULL", "submitted_by != ''"]
+  const liveParams: number[] = []
+  if (liveScope) {
+    liveWhere.push(liveScope.clause)
+    liveParams.push(...liveScope.params)
   }
+
+  const statsScope = countryScopeSQL(access, 'rs')
+  const statsWhere: string[] = []
+  const statsParams: number[] = []
+  if (statsScope) {
+    statsWhere.push(statsScope.clause)
+    statsParams.push(...statsScope.params)
+  }
+  const statsWhereClause = statsWhere.length ? `WHERE ${statsWhere.join(' AND ')}` : ''
+
   const rows = await dbAll<{ submitted_by: string; type: RequestType; count: number }>(
-    `SELECT submitted_by, type, COUNT(*) AS count
-     FROM requests
-     WHERE ${where.join(' AND ')}
+    `SELECT submitted_by, type, SUM(count) AS count
+     FROM (
+       SELECT submitted_by, type, COUNT(*) AS count
+       FROM requests r
+       WHERE ${liveWhere.join(' AND ')}
+       GROUP BY submitted_by, type
+       UNION ALL
+       SELECT submitted_by, type, count
+       FROM request_stats rs
+       ${statsWhereClause}
+     )
      GROUP BY submitted_by, type`,
-    params,
+    [...liveParams, ...statsParams],
   )
 
   const byUser = new Map<string, UserCounts>()

@@ -265,10 +265,12 @@ function Privacy() {
             <Title order={2}>8. Data retention</Title>
             <Text>
               Request records (including notes, screenshots, and permalinks) are automatically and permanently
-              deleted 24 hours after submission, or sooner if an admin removes them manually. Account and
-              configuration data (users, countries, channels) is kept for as long as they're operationally useful,
-              and deleted when an admin removes them. Analytics events in PostHog follow PostHog's own retention
-              settings for our account.
+              deleted 24 hours after submission, or sooner if an admin removes them manually. Before a request is
+              deleted, an aggregate count of it (submitting editor, country, and request type — no permalink, notes,
+              or screenshot) is added to a running per-user tally, which we keep indefinitely to power the Reports
+              feature. Account and configuration data (users, countries, channels) is kept for as long as they're
+              operationally useful, and deleted when an admin removes them. Analytics events in PostHog follow
+              PostHog's own retention settings for our account.
             </Text>
           </Stack>
         </Card>
