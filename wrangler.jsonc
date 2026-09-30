@@ -26,10 +26,10 @@
 		// is same-origin and unaffected by this. Includes both waze.com and www.waze.com
 		// since Waze's own generated links use the bare domain while the app may serve under www.
 		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wazetools.com",
-		// The "From" address for auth emails (password reset / invite) sent via Postmark —
-		// must be a verified Sender Signature (or a domain you've verified) in your Postmark
-		// account. The Postmark Server API Token itself is a secret, not a var — see DEPLOYMENT.md.
-		"POSTMARK_FROM_EMAIL": "requests@mail.wazetools.com",
+		// The "From" address for auth emails (password reset / invite / 2FA codes), sent through
+		// the EMAIL binding below. Its domain must be onboarded to Cloudflare Email Sending
+		// (`wrangler email sending enable <domain>`) — see DEPLOYMENT.md.
+		"AUTH_EMAIL_FROM": "requests@notify.wazetools.com",
 		// The dashboard's own deployed origin — required so invite/password-reset emails
 		// link to an absolute URL instead of a bare path.
 		"BETTER_AUTH_URL": "https://requests.wazetools.com",
@@ -51,6 +51,14 @@
 			"database_name": "wme-requests",
 			// Replace with the ID printed by: wrangler d1 create wme-requests
 			"database_id": "2af446ca-93ff-4681-ab5c-80edcd5098d0",
+			"remote": true
+		}
+	],
+	// Cloudflare Email Sending, used for auth emails (src/lib/system-email.ts). No API token
+	// needed. `remote: true` makes `vite dev` send real emails too, since there's no local emulation.
+	"send_email": [
+		{
+			"name": "EMAIL",
 			"remote": true
 		}
 	],

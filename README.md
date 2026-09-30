@@ -160,7 +160,7 @@ All endpoints are under `/api/`. The dashboard and userscript both talk to this 
 
 - **Slack / Discord / generic Webhook** — use `webhook_url`.
 - **Telegram** — use `bot_token` + `chat_id` instead of `webhook_url`.
-- **Email** — use `email_to` (recipient address) instead of `webhook_url`; sent via [Postmark](https://postmarkapp.com) using the `POSTMARK_SERVER_TOKEN` secret and `POSTMARK_FROM_EMAIL` var (see [Environment Variables](#environment-variables)).
+- **Email** — use `email_to` (recipient address) instead of `webhook_url`; sent through an email credential (Postmark, Mailgun or SMTP) added in the Credentials Manager.
 
 The generic `webhook` platform POSTs a plain JSON body (not platform-formatted) to `webhook_url`, for wiring up your own integrations:
 
@@ -272,16 +272,15 @@ Set these in `wrangler.jsonc` under `vars`:
 | Variable | Default | Description |
 |---|---|---|
 | `ALLOWED_ORIGINS` | `https://waze.com,https://www.waze.com,https://beta.waze.com` | Comma-separated CORS allowlist, or `*` for any origin. Only the request's actual `Origin` header is echoed back if it exact-matches an entry — unlisted origins get no `Access-Control-Allow-Origin` header at all, which the browser treats as a CORS failure. This only affects cross-origin `fetch`/`XHR` calls (i.e. the public `POST /api/requests` endpoint called from a web page); it does **not** gate `GM_xmlhttpRequest` calls made by the userscript itself, since those are a browser-extension-privileged request type that bypasses CORS enforcement entirely — the restriction's real value is stopping an arbitrary website's client-side JS from posting fake requests through a visiting user's browser. |
-| `POSTMARK_FROM_EMAIL` | — | The "From" address for `email`-platform notification channels. Must be a verified Sender Signature (or verified domain) in your Postmark account. |
+| `AUTH_EMAIL_FROM` | — | The "From" address for the app's own emails (invites, password resets, two-factor codes), sent through the `EMAIL` Cloudflare Email Sending binding. Its domain must be onboarded with `wrangler email sending enable` — see [DEPLOYMENT.md](DEPLOYMENT.md) step 7. |
 
 Set as a secret, not a plain var (see [Configure the auth secret](#5--configure-the-auth-secret)):
 
 | Secret | Description |
 |---|---|
 | `BETTER_AUTH_SECRET` | Signs and encrypts session cookies |
-| `POSTMARK_SERVER_TOKEN` | Postmark Server API Token, used to send `email`-platform notifications |
 
-Most per-channel notification credentials (Slack/Discord webhook URLs, Telegram bot token + chat ID, email recipient) are stored **in the database**, scoped to each channel. The two exceptions are `POSTMARK_SERVER_TOKEN` and `POSTMARK_FROM_EMAIL`, which are shared across all email channels and live in the environment instead, since they belong to your Postmark account/sending domain rather than to any one channel.
+Per-channel notification credentials (Slack/Discord webhook URLs, Telegram bot token + chat ID, email recipient) are stored **in the database**, scoped to each channel; email channels send through a BYOK credential from the Credentials Manager.
 
 ---
 

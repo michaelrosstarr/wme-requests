@@ -26,6 +26,7 @@ import UserFormModal from '@/components/UserFormModal'
 import InviteUserModal from '@/components/InviteUserModal'
 import UserAccessModal from '@/components/UserAccessModal'
 import CredentialsModal from '@/components/CredentialsModal'
+import { confirmDialog } from '@/lib/dialogs'
 
 export const Route = createFileRoute('/_protected/admin')({ component: Admin })
 
@@ -90,15 +91,27 @@ function Admin() {
     return c.type === 'google_service_account' ? !!me?.isGlobal : me?.isGlobal || c.owner_user_id === me?.userId
   }
 
-  function handleDeleteCredential(id: number) {
-    if (!confirm('Delete this credential? Any channel still using it will stop sending until reconfigured.')) return
+  async function handleDeleteCredential(id: number) {
+    const ok = await confirmDialog({
+      title: 'Delete credential',
+      message: 'Any channel still using this credential will stop sending until it is reconfigured.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     deleteCredential.mutate(id, {
       onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
     })
   }
 
-  function handleDeleteCountry(id: number) {
-    if (!confirm('Delete this country and all its channels and requests?')) return
+  async function handleDeleteCountry(id: number) {
+    const ok = await confirmDialog({
+      title: 'Delete country',
+      message: 'This country and all of its channels and requests will be permanently deleted.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     deleteCountry.mutate(id, {
       onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
     })
@@ -116,9 +129,15 @@ function Admin() {
     setChannelModal({ opened: true, channel: null })
   }
 
-  function handleDeleteChannel(id: number) {
+  async function handleDeleteChannel(id: number) {
     if (!selectedCountryId) return
-    if (!confirm('Delete this channel?')) return
+    const ok = await confirmDialog({
+      title: 'Delete channel',
+      message: 'This notification channel will be permanently deleted.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     deleteChannel.mutate(
       { id, countryId: selectedCountryId },
       {
@@ -135,8 +154,13 @@ function Admin() {
     })
   }
 
-  function handleResetPassword(id: string, email: string) {
-    if (!confirm(`Send a password reset email to ${email}?`)) return
+  async function handleResetPassword(id: string, email: string) {
+    const ok = await confirmDialog({
+      title: 'Send password reset',
+      message: `Send a password reset email to ${email}?`,
+      confirmLabel: 'Send email',
+    })
+    if (!ok) return
     resetUserPassword.mutate(id, {
       onSuccess: () => notifications.show({ color: 'green', message: `Reset email sent to ${email}.` }),
       onError: (e) => notifications.show({ color: 'red', title: 'Reset failed', message: (e as Error).message }),

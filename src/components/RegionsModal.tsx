@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { notifications } from '@mantine/notifications'
 import { useCreateRegion, useDeleteRegion, useRegions } from '@/lib/queries'
 import type { Country } from '@/lib/types'
+import { confirmDialog } from '@/lib/dialogs'
 
 interface Props {
   opened: boolean
@@ -35,9 +36,15 @@ export default function RegionsModal({ opened, onClose, country }: Readonly<Prop
     )
   }
 
-  function handleDelete(id: number) {
+  async function handleDelete(id: number) {
     if (!countryId) return
-    if (!confirm('Delete this region? Channels scoped to it will be removed; requests will fall back to the country level.')) return
+    const ok = await confirmDialog({
+      title: 'Delete region',
+      message: 'Channels scoped to this region will be removed; its requests will fall back to the country level.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     deleteRegion.mutate(
       { id, countryId },
       { onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }) },

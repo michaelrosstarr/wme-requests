@@ -40,6 +40,7 @@ import {
 import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
 import { isPushSupported } from '@/lib/push-client'
 import TableLoadingRow from '@/components/TableLoadingRow'
+import { confirmDialog } from '@/lib/dialogs'
 
 export const Route = createFileRoute('/_protected/requests')({ component: Dashboard })
 
@@ -148,16 +149,28 @@ function Dashboard() {
     )
   }
 
-  function handleResetFeedUrl() {
-    if (!confirm('Reset your feed URL? Any feed readers using the current URL will stop working.')) return
+  async function handleResetFeedUrl() {
+    const ok = await confirmDialog({
+      title: 'Reset feed URL',
+      message: 'Any feed readers using the current URL will stop working until you give them the new one.',
+      confirmLabel: 'Reset URL',
+      danger: true,
+    })
+    if (!ok) return
     rotateFeedToken.mutate(undefined, {
       onSuccess: () => notifications.show({ color: 'blue', message: 'Feed URL reset. Copy the new URL to your reader.' }),
       onError: (e) => notifications.show({ color: 'red', title: 'Failed to reset', message: (e as Error).message }),
     })
   }
 
-  function handleDelete(id: number) {
-    if (!confirm('Delete this request?')) return
+  async function handleDelete(id: number) {
+    const ok = await confirmDialog({
+      title: 'Delete request',
+      message: 'This request will be permanently deleted.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     deleteRequest.mutate(id, {
       onError: (e) => notifications.show({ color: 'red', title: 'Failed to delete', message: (e as Error).message }),
     })
@@ -177,9 +190,16 @@ function Dashboard() {
     setSelectedIds(allOnPageSelected ? new Set() : new Set(data.data.map((r) => r.id)))
   }
 
-  function handleBulkDelete() {
+  async function handleBulkDelete() {
     if (!selectedIds.size) return
-    if (!confirm(`Delete ${selectedIds.size} selected request${selectedIds.size !== 1 ? 's' : ''}?`)) return
+    const count = selectedIds.size
+    const ok = await confirmDialog({
+      title: `Delete ${count} request${count !== 1 ? 's' : ''}`,
+      message: `The ${count} selected request${count !== 1 ? 's' : ''} will be permanently deleted.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     deleteRequests.mutate([...selectedIds], {
       onSuccess: () => setSelectedIds(new Set()),
       onError: (e) => notifications.show({ color: 'red', title: 'Failed to delete', message: (e as Error).message }),

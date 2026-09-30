@@ -5,6 +5,7 @@ import type {} from '@tanstack/react-start'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MantineProvider, mantineHtmlProps, ColorSchemeScript } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
+import { ModalsProvider } from '@mantine/modals'
 import { PostHogProvider } from '@posthog/react'
 import { useState } from 'react'
 
@@ -41,11 +42,13 @@ function RootDocument({ children }: Readonly<{ children: React.ReactNode }>) {
         <PostHogRoot>
           <QueryClientProvider client={queryClient}>
             <MantineProvider defaultColorScheme="auto">
-              <Notifications position="top-right" />
-              <AppHeader />
-              {children}
-              <Footer />
-              <CookieConsent />
+              <ModalsProvider>
+                <Notifications position="top-right" />
+                <AppHeader />
+                {children}
+                <Footer />
+                <CookieConsent />
+              </ModalsProvider>
             </MantineProvider>
           </QueryClientProvider>
         </PostHogRoot>

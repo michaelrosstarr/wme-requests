@@ -6,6 +6,9 @@ import { notifications } from '@mantine/notifications'
 import { KeyRound, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { SOCIAL_PROVIDERS, type SocialProviderId } from '@/lib/social-providers'
+import TwoFactorSettings from '@/components/TwoFactorSettings'
+import SecurityActivity, { SECURITY_ACTIVITY_KEY } from '@/components/SecurityActivity'
+import { confirmDialog, promptDialog } from '@/lib/dialogs'
 
 export const Route = createFileRoute('/_protected/account')({ component: Account })
 
@@ -46,6 +49,7 @@ function Account() {
     onSuccess: () => {
       notifications.show({ color: 'green', message: 'Account unlinked.' })
       qc.invalidateQueries({ queryKey: ACCOUNTS_KEY })
+      qc.invalidateQueries({ queryKey: SECURITY_ACTIVITY_KEY })
     },
     onError: (e) => notifications.show({ color: 'red', title: 'Unlink failed', message: (e as Error).message }),
   })
@@ -55,12 +59,21 @@ function Account() {
       const { error } = await authClient.passkey.deletePasskey({ id })
       if (error) throw new Error(error.message ?? 'Delete failed')
     },
-    onSuccess: () => notifications.show({ color: 'green', message: 'Passkey removed.' }),
+    onSuccess: () => {
+      notifications.show({ color: 'green', message: 'Passkey removed.' })
+      qc.invalidateQueries({ queryKey: SECURITY_ACTIVITY_KEY })
+    },
     onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
   })
 
   async function handleAddPasskey() {
-    const name = prompt('Name this passkey (optional), e.g. "MacBook" or "Phone":')
+    const name = await promptDialog({
+      title: 'Add passkey',
+      label: 'Name (optional)',
+      description: 'Helps you tell your passkeys apart later.',
+      placeholder: 'e.g. MacBook or Phone',
+      confirmLabel: 'Continue',
+    })
     if (name === null) return
     setAdding(true)
     const { error } = await authClient.passkey.addPasskey({ name: name.trim() || undefined })
@@ -71,15 +84,28 @@ function Account() {
     }
     notifications.show({ color: 'green', message: 'Passkey added.' })
     passkeysQuery.refetch()
+    qc.invalidateQueries({ queryKey: SECURITY_ACTIVITY_KEY })
   }
 
-  function handleDeletePasskey(id: string) {
-    if (!confirm('Remove this passkey? You will no longer be able to sign in with it.')) return
+  async function handleDeletePasskey(id: string) {
+    const ok = await confirmDialog({
+      title: 'Remove passkey',
+      message: 'You will no longer be able to sign in with this passkey.',
+      confirmLabel: 'Remove',
+      danger: true,
+    })
+    if (!ok) return
     deletePasskey.mutate(id)
   }
 
-  function handleUnlink(providerId: SocialProviderId, label: string) {
-    if (!confirm(`Unlink your ${label} account?`)) return
+  async function handleUnlink(providerId: SocialProviderId, label: string) {
+    const ok = await confirmDialog({
+      title: `Unlink ${label}`,
+      message: `You will no longer be able to sign in with ${label}. You can connect it again later.`,
+      confirmLabel: 'Unlink',
+      danger: true,
+    })
+    if (!ok) return
     unlink.mutate(providerId)
   }
 
@@ -88,7 +114,11 @@ function Account() {
     const { error } = await authClient.linkSocial({ provider: providerId, callbackURL: '/account' })
     if (error) {
       setLinking(null)
-      notifications.show({ color: 'red', title: `Could not connect ${label}`, message: error.message ?? 'Unknown error' })
+      notifications.show({
+        color: 'red',
+        title: `Could not connect ${label}`,
+        message: error.message ?? 'Unknown error',
+      })
     }
   }
 
@@ -151,6 +181,8 @@ function Account() {
             </Stack>
           )}
         </Paper>
+
+        <TwoFactorSettings hasPassword={hasPassword} />
 
         <Paper withBorder p="md" radius="md">
           <Text fw={600} mb="sm">
@@ -215,6 +247,8 @@ function Account() {
             </Stack>
           )}
         </Paper>
+
+        <SecurityActivity />
       </Stack>
     </Container>
   )

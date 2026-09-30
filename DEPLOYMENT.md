@@ -72,6 +72,8 @@ This applies everything under [`migrations/`](migrations/):
 | `0015_push_subscriptions.sql` | `push_subscriptions` — self-service browser Web Push, independent of the channels above |
 | `0016_ntfy_gotify_channels.sql` | `ntfy` and `gotify` notification platforms |
 | `0022_passkey.sql` | `passkey` — WebAuthn credentials for **Sign in with passkey** (managed from the Account page) |
+| `0023_two_factor.sql` | `user.twoFactorEnabled`, `twoFactor` and `securityKey` — two-factor authentication (email codes, authenticator app, security keys, backup codes) |
+| `0024_security_events.sql` | `security_events` — per-user security log (sign-ins, failed sign-ins, sign-in method and 2FA changes) shown on the Account page |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -107,37 +109,45 @@ Passkeys are bound to this URL's hostname (their WebAuthn relying-party ID), so 
 domain you'll keep: moving to a different domain later leaves existing passkeys unusable, and
 users would have to add new ones from the Account page.
 
-## 7 — Configure Postmark for system emails (optional)
+## 7 — Configure Cloudflare Email Sending for system emails
 
-This is only for the app's own transactional email — user invites and password resets (see
-step 12). It's separate from the `email` notification platform, which is BYOK and configured per
-user in the Credentials Manager (step 9) instead. Skip this step if you don't plan to invite
-users by email (you can still create accounts directly via `create-admin-user.mjs`/**Admin**).
+This is only for the app's own transactional email — user invites, password resets (see
+step 12) and two-factor sign-in codes. It's separate from the `email` notification platform,
+which is BYOK and configured per user in the Credentials Manager (step 9) instead. It goes
+through the Worker's `EMAIL` binding, so there's no API token to manage.
 
-1. In your [Postmark](https://postmarkapp.com) account, verify a Sender Signature or domain to send from.
-2. Set the from-address var in `wrangler.jsonc`:
+1. Onboard the domain you'll send from (a subdomain like `notify.yourdomain.com` keeps its
+   reputation separate from your main domain). It must be a zone on the same Cloudflare account:
+
+   ```bash
+   npx wrangler email sending enable notify.yourdomain.com
+   npx wrangler email sending list   # should show it as enabled
+   ```
+
+2. Set the from-address var in `wrangler.jsonc` (any address on that domain):
 
    ```jsonc
    "vars": {
-     "POSTMARK_FROM_EMAIL": "notifications@yourdomain.com"
+     "AUTH_EMAIL_FROM": "requests@notify.yourdomain.com"
    }
    ```
 
-3. Set the Server API Token as a secret (never in `wrangler.jsonc`):
+   The `send_email` binding named `EMAIL` is already declared in `wrangler.jsonc`. It's marked
+   `"remote": true`, so `npm run dev` sends real emails too — test with addresses you control.
 
-   ```bash
-   # Local development — appended to .dev.vars (already gitignored)
-   echo "POSTMARK_SERVER_TOKEN=your-real-token" >> .dev.vars
-
-   # Production
-   wrangler secret put POSTMARK_SERVER_TOKEN
-   ```
-
-4. Regenerate the Worker's env types after touching `wrangler.jsonc` or `.dev.vars`:
+3. Regenerate the Worker's env types after touching `wrangler.jsonc`:
 
    ```bash
    npm run cf-typegen
    ```
+
+It also sends users a "Security alert" email whenever their password, passkeys, security keys,
+two-factor settings or linked accounts change (sign-ins are logged on the Account page but not
+emailed).
+
+Without this, inviting users by email, "Forgot password?", two-factor email codes and security
+alerts won't work
+(you can still create accounts directly via `create-admin-user.mjs`/**Admin**).
 
 ## 8 — Configure Discord sign-in (optional)
 
@@ -345,9 +355,9 @@ wrangler d1 execute wme-requests --remote --command "$(node scripts/create-admin
 ```
 
 Every account after that can be managed from **/admin → Users** in the dashboard once you're
-signed in: **Create** sets a password directly, **Invite** emails a link (via Postmark, see step 7)
+signed in: **Create** sets a password directly, **Invite** emails a link (via Cloudflare Email Sending, see step 7)
 letting the person set their own password, and **Reset Password** re-sends that same link to an
-existing user. Invite/reset emails require step 7's Postmark config and step 6's `BETTER_AUTH_URL`.
+existing user. Invite/reset emails require step 7's email config and step 6's `BETTER_AUTH_URL`.
 
 ## 13 — Try it locally
 

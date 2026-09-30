@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Anchor, Card, Code, Container, Group, List, Stack, Text, Title } from '@mantine/core'
-import { Bell, KeyRound, Rss } from 'lucide-react'
+import { Bell, KeyRound, Rss, ShieldCheck } from 'lucide-react'
 import { PlatformBadge } from '@/lib/labels'
 import type { Platform } from '@/lib/types'
 
@@ -330,6 +330,42 @@ function Help() {
             <List.Item>
               You can't remove your last sign-in method, so you can't lock yourself out. Add a passkey or link
               another account first.
+            </List.Item>
+          </List>
+        </Card>
+
+        <Card withBorder radius="md" p="md">
+          <Group gap="xs" mb={4}>
+            <ShieldCheck size={14} />
+            <Text fw={600} size="sm">
+              Two-factor authentication
+            </Text>
+          </Group>
+          <Text size="sm" c="dimmed" mb="sm">
+            Adds a second step after your password. Turn it on from the <strong>Account</strong> page (you need a
+            password set).
+          </Text>
+          <List type="ordered" size="sm" spacing={4}>
+            <List.Item>
+              Click <strong>Turn on</strong>, confirm your password, then enter the code we email you. Save the backup
+              codes it shows — each one signs you in once if you can't use your other methods.
+            </List.Item>
+            <List.Item>
+              Email codes always work once 2FA is on. Optionally add an <strong>authenticator app</strong> (scan the QR
+              code) or a <strong>security key</strong> such as a YubiKey, and pick whichever is handy when signing in.
+            </List.Item>
+            <List.Item>
+              Tick <strong>Trust this device for 30 days</strong> at the code prompt to skip the second step on that
+              browser.
+            </List.Item>
+            <List.Item>
+              We email you whenever your password, passkeys, security keys, 2FA settings or connected accounts
+              change, and the Account page lists recent sign-ins and changes under{' '}
+              <strong>Recent security activity</strong>. If you see something you didn't do, reset your password.
+            </List.Item>
+            <List.Item>
+              2FA applies to password sign-in. Passkeys already count as two factors, and Discord sign-in relies on
+              your Discord account's own security — turn on 2FA in Discord too.
             </List.Item>
           </List>
         </Card>

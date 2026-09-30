@@ -1,14 +1,17 @@
 import { env, waitUntil } from 'cloudflare:workers'
 import { betterAuth } from 'better-auth'
-import { captcha } from 'better-auth/plugins'
+import { captcha, twoFactor } from 'better-auth/plugins'
 import { passkey } from '@better-auth/passkey'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { withCloudflare } from 'better-auth-cloudflare'
-import { sendPostmarkEmail } from './postmark'
+import { sendSystemEmail } from './system-email'
+import { securityKey2fa } from './security-key-2fa'
+import { securityActivity } from './security-activity'
 
 // Lazy factory: env.DB is only valid inside a request (see getDb() in src/lib/db.ts),
 // so auth can't be constructed once at module scope.
 export function getAuth() {
+  const appOrigin = new URL(env.BETTER_AUTH_URL)
   return betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     // Needed so password-reset/invite emails link back to an absolute URL — without it,
@@ -61,11 +64,11 @@ export function getAuth() {
           // `account` row yet, and this same reset-password flow creates one for them
           // once they follow the link and set a password (see api/routes/password.mjs).
           sendResetPassword: async ({ user, url }) => {
-            await sendPostmarkEmail({
+            await sendSystemEmail({
               to: user.email,
               subject: 'Set your WME Requests password',
-              textBody: `Set your password for WME Requests:\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
-              htmlBody: `<p>Set your password for WME Requests:</p><p><a href="${url}">${url}</a></p><p>If you didn't request this, you can ignore this email.</p>`,
+              text: `Set your password for WME Requests:\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
+              html: `<p>Set your password for WME Requests:</p><p><a href="${url}">${url}</a></p><p>If you didn't request this, you can ignore this email.</p>`,
             })
           },
         },
@@ -77,11 +80,29 @@ export function getAuth() {
           captcha({ provider: 'cloudflare-turnstile', secretKey: env.TURNSTILE_SECRET_KEY }),
           // Passkey sign-in isn't behind captcha: WebAuthn is origin-bound and phishing-resistant
           // on its own. rpID is the bare hostname (`localhost` in dev, which WebAuthn allows).
-          passkey({
-            rpID: new URL(env.BETTER_AUTH_URL).hostname,
-            rpName: 'WME Requests',
-            origin: new URL(env.BETTER_AUTH_URL).origin,
+          passkey({ rpID: appOrigin.hostname, rpName: 'WME Requests', origin: appOrigin.origin }),
+          // Two-factor authentication. Only password sign-in (/sign-in/email) is challenged —
+          // passkeys are already multi-factor, and Discord relies on the Discord account's own
+          // security. Email codes work for every user with 2FA on (that's how it gets turned on,
+          // see /account); the authenticator app is optional on top, plus one-time backup codes.
+          twoFactor({
+            issuer: 'WME Requests',
+            otpOptions: {
+              storeOTP: 'hashed',
+              sendOTP: async ({ user, otp }) => {
+                await sendSystemEmail({
+                  to: user.email,
+                  subject: `${otp} is your WME Requests verification code`,
+                  text: `Your WME Requests verification code is ${otp}\n\nIt expires in 3 minutes. If you didn't just try to sign in, change your password.`,
+                  html: `<p>Your WME Requests verification code is</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p><p>It expires in 3 minutes. If you didn't just try to sign in, change your password.</p>`,
+                })
+              },
+            },
           }),
+          // Physical security keys as another second factor — must come after twoFactor().
+          securityKey2fa({ rpID: appOrigin.hostname, rpName: 'WME Requests', origin: appOrigin.origin }),
+          // Security log + notification emails. Must come after the two-factor plugins (see file).
+          securityActivity(),
           // Cookie-setting plugin for TanStack Start must come last.
           tanstackStartCookies(),
         ],

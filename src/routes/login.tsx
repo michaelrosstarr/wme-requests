@@ -18,6 +18,7 @@ import { KeyRound, Map } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { SOCIAL_PROVIDERS, type SocialProviderId } from '@/lib/social-providers'
 import Turnstile, { type TurnstileHandle } from '@/components/Turnstile'
+import TwoFactorChallenge, { type TwoFactorMethod } from '@/components/TwoFactorChallenge'
 
 export const Route = createFileRoute('/login')({ component: Login })
 
@@ -34,8 +35,10 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<SocialProviderId | null>(null)
+  // Set when the password was right but the account has 2FA on (see twoFactor() in src/lib/auth.ts).
+  const [twoFactorMethods, setTwoFactorMethods] = useState<string[] | null>(null)
 
-  async function completeSignIn(method: 'email' | 'passkey') {
+  async function completeSignIn(method: 'email' | 'passkey', twoFactorMethod?: TwoFactorMethod) {
     const { data: session } = await authClient.getSession()
     if (session?.user.id) {
       posthog.identify(session.user.id, {
@@ -43,7 +46,10 @@ function Login() {
         name: session.user.name,
       })
     }
-    posthog.capture('user_signed_in', { authentication_method: method })
+    posthog.capture('user_signed_in', {
+      authentication_method: method,
+      ...(twoFactorMethod && { two_factor_method: twoFactorMethod }),
+    })
     navigate({ to: '/requests' })
   }
 
@@ -73,7 +79,7 @@ function Login() {
       return
     }
     setLoading(true)
-    const { error: signInError } = await authClient.signIn.email({
+    const { data, error: signInError } = await authClient.signIn.email({
       email,
       password,
       fetchOptions: captchaToken ? { headers: { 'x-captcha-response': captchaToken } } : undefined,
@@ -85,6 +91,11 @@ function Login() {
     setCaptchaToken(null)
     if (signInError) {
       setError(signInError.message ?? 'Sign in failed')
+      return
+    }
+    // No session yet: the server is waiting on a second factor, tracked by its two_factor cookie.
+    if (data && 'twoFactorRedirect' in data && data.twoFactorRedirect) {
+      setTwoFactorMethods((data as { twoFactorMethods?: string[] }).twoFactorMethods ?? [])
       return
     }
     await completeSignIn('email')
@@ -127,67 +138,80 @@ function Login() {
             WME Requests
           </Group>
         </Title>
-        <form onSubmit={handleSubmit}>
-          <Stack>
-            {error && (
-              <Alert color="red" title="Sign in failed">
-                {error}
-              </Alert>
-            )}
-            <TextInput
-              label="Email"
-              type="email"
-              autoComplete="username webauthn"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.currentTarget.value)}
-            />
-            <PasswordInput
-              label="Password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
-            />
-            {TURNSTILE_SITE_KEY && (
-              <Turnstile
-                ref={turnstileRef}
-                siteKey={TURNSTILE_SITE_KEY}
-                onVerify={setCaptchaToken}
-                onExpire={() => setCaptchaToken(null)}
-              />
-            )}
-            <Button type="submit" loading={loading} fullWidth>
-              Sign in
-            </Button>
-            <Anchor component={Link} to="/forgot-password" size="sm" ta="center">
-              Forgot password?
-            </Anchor>
-          </Stack>
-        </form>
-        <Divider label="or" my="md" />
-        <Stack gap="xs">
-          <Button
-            variant="default"
-            leftSection={<KeyRound size={16} />}
-            loading={passkeyLoading}
-            fullWidth
-            onClick={handlePasskeySignIn}
-          >
-            Sign in with passkey
-          </Button>
-          {SOCIAL_PROVIDERS.map(({ id, label, icon: Icon }) => (
-            <Button
-              key={id}
-              variant="default"
-              leftSection={<Icon size={16} />}
-              loading={socialLoading === id}
-              fullWidth
-              onClick={() => handleSocialSignIn(id, label)}
-            >
-              Sign in with {label}
-            </Button>
-          ))}
-        </Stack>
+        {twoFactorMethods ? (
+          <TwoFactorChallenge
+            serverMethods={twoFactorMethods}
+            onSuccess={(m) => completeSignIn('email', m)}
+            onCancel={() => {
+              setTwoFactorMethods(null)
+              setPassword('')
+            }}
+          />
+        ) : (
+          <>
+            <form onSubmit={handleSubmit}>
+              <Stack>
+                {error && (
+                  <Alert color="red" title="Sign in failed">
+                    {error}
+                  </Alert>
+                )}
+                <TextInput
+                  label="Email"
+                  type="email"
+                  autoComplete="username webauthn"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.currentTarget.value)}
+                />
+                <PasswordInput
+                  label="Password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.currentTarget.value)}
+                />
+                {TURNSTILE_SITE_KEY && (
+                  <Turnstile
+                    ref={turnstileRef}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onVerify={setCaptchaToken}
+                    onExpire={() => setCaptchaToken(null)}
+                  />
+                )}
+                <Button type="submit" loading={loading} fullWidth>
+                  Sign in
+                </Button>
+                <Anchor component={Link} to="/forgot-password" size="sm" ta="center">
+                  Forgot password?
+                </Anchor>
+              </Stack>
+            </form>
+            <Divider label="or" my="md" />
+            <Stack gap="xs">
+              <Button
+                variant="default"
+                leftSection={<KeyRound size={16} />}
+                loading={passkeyLoading}
+                fullWidth
+                onClick={handlePasskeySignIn}
+              >
+                Sign in with passkey
+              </Button>
+              {SOCIAL_PROVIDERS.map(({ id, label, icon: Icon }) => (
+                <Button
+                  key={id}
+                  variant="default"
+                  leftSection={<Icon size={16} />}
+                  loading={socialLoading === id}
+                  fullWidth
+                  onClick={() => handleSocialSignIn(id, label)}
+                >
+                  Sign in with {label}
+                </Button>
+              ))}
+            </Stack>
+          </>
+        )}
       </Paper>
     </Center>
   )
