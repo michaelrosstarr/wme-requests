@@ -8,9 +8,10 @@ import { authClient } from '@/lib/auth-client'
 
 const NAV_LINKS = [
   { to: '/', label: 'Home', authOnly: false },
-  { to: '/requests', label: 'Requests', authOnly: false },
+  { to: '/requests', label: 'Requests', authOnly: true },
   { to: '/admin', label: 'Admin', authOnly: true },
   { to: '/reports', label: 'Reports', authOnly: true },
+  { to: '/account', label: 'Account', authOnly: true },
   { to: '/help', label: 'Help', authOnly: false },
 ] as const
 

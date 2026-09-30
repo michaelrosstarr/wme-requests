@@ -1,89 +1,202 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Badge, Container, Paper, Progress, Table, Text, Title } from '@mantine/core'
+import { Alert, Badge, Container, Paper, Progress, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
 import { useUserReport } from '@/lib/queries'
-import { TypeBadge, TYPE_COLORS, TYPE_LABELS, REQUEST_TYPE_LIST } from '@/lib/labels'
+import { TypeBadge, TYPE_COLORS, TYPE_LABELS } from '@/lib/labels'
+import type { RequestType } from '@/lib/types'
 import TableLoadingRow from '@/components/TableLoadingRow'
+import {
+  CHART_TYPE_ORDER,
+  ChartCard,
+  ChartEmpty,
+  ChartSkeleton,
+  HorizontalBars,
+  StackedTypeBars,
+  StatTile,
+  TypeLegend,
+} from '@/components/ReportCharts'
 
 export const Route = createFileRoute('/_protected/reports')({ component: Reports })
 
-const COL_SPAN = 3 + REQUEST_TYPE_LIST.length
+const COL_SPAN = 4 + CHART_TYPE_ORDER.length
+const TOP_N = 10
 
 function Reports() {
-  const { data, isLoading, isError, error } = useUserReport()
+  // isPending (not isLoading) so the server-rendered HTML shows the loading state rather than
+  // the empty state — the query only starts fetching once the page hydrates.
+  const { data, isPending, isError, error } = useUserReport()
   const rows = data?.data ?? []
+  const countries = data?.countries ?? []
+
+  const typeTotals = Object.fromEntries(
+    CHART_TYPE_ORDER.map((t) => [t, rows.reduce((sum, r) => sum + r.counts[t], 0)]),
+  ) as Record<RequestType, number>
+  const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
+  const typesBySize = [...CHART_TYPE_ORDER].sort((a, b) => typeTotals[b] - typeTotals[a])
+  const topType = grandTotal ? typesBySize[0] : null
+
+  const countryRows = countries.slice(0, TOP_N).map((c) => ({
+    key: c.country_id,
+    label: <Text size="sm">{c.country_name}</Text>,
+    tooltip: c.country_name,
+    value: c.total,
+  }))
+  const otherCountries = countries.slice(TOP_N)
+  if (otherCountries.length) {
+    const otherTotal = otherCountries.reduce((sum, c) => sum + c.total, 0)
+    countryRows.push({
+      key: -1,
+      label: (
+        <Text size="sm" c="dimmed">
+          Other ({otherCountries.length})
+        </Text>
+      ),
+      tooltip: `${otherCountries.length} other countries`,
+      value: otherTotal,
+    })
+  }
+
+  const empty = !isPending && !isError && !rows.length
 
   return (
     <Container size="xl" pb="xl">
-      <Paper withBorder p="md" radius="md">
-        <Title order={4} mb="sm">
-          Requests by User
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          Every submitter with at least one request, broken down by type and whichever type they submit more of.
-        </Text>
+      <Stack gap="md">
+        <div>
+          <Title order={3}>Reports</Title>
+          <Text size="sm" c="dimmed">
+            All-time totals for requests with a recorded username, limited to the countries you can access.
+          </Text>
+        </div>
 
-        <Table.ScrollContainer minWidth={720}>
-          <Table striped highlightOnHover verticalSpacing="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>User</Table.Th>
-                <Table.Th>Total</Table.Th>
-                {REQUEST_TYPE_LIST.map((t) => (
-                  <Table.Th key={t}>{TYPE_LABELS[t]}</Table.Th>
-                ))}
-                <Table.Th>Split</Table.Th>
-                <Table.Th>Majority Type</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {isLoading && <TableLoadingRow colSpan={COL_SPAN} />}
-              {isError && (
+        {isError && (
+          <Alert color="red" title="Could not load reports">
+            {(error as Error).message}
+          </Alert>
+        )}
+
+        <SimpleGrid cols={{ base: 2, md: 4 }}>
+          <StatTile label="Total requests" loading={isPending} value={grandTotal.toLocaleString()} />
+          <StatTile label="Contributors" loading={isPending} value={rows.length.toLocaleString()} />
+          <StatTile label="Countries" loading={isPending} value={countries.length.toLocaleString()} />
+          <StatTile
+            label="Most common type"
+            loading={isPending}
+            value={topType ? <TypeBadge type={topType} /> : '—'}
+          />
+        </SimpleGrid>
+
+        <SimpleGrid cols={{ base: 1, md: 2 }}>
+          <ChartCard title="Requests by type">
+            {isPending ? (
+              <ChartSkeleton rows={CHART_TYPE_ORDER.length} />
+            ) : empty ? (
+              <ChartEmpty>No data yet.</ChartEmpty>
+            ) : (
+              <HorizontalBars
+                rows={typesBySize.map((t) => ({
+                  key: t,
+                  label: <TypeBadge type={t} />,
+                  tooltip: TYPE_LABELS[t],
+                  value: typeTotals[t],
+                }))}
+              />
+            )}
+          </ChartCard>
+
+          <ChartCard title="Requests by country">
+            {isPending ? (
+              <ChartSkeleton />
+            ) : empty ? (
+              <ChartEmpty>No data yet.</ChartEmpty>
+            ) : (
+              <HorizontalBars rows={countryRows} />
+            )}
+          </ChartCard>
+        </SimpleGrid>
+
+        <ChartCard
+          title="Top contributors"
+          description={`The ${TOP_N} most active submitters, split by request type. Hover a segment for details.`}
+        >
+          {isPending ? (
+            <ChartSkeleton rows={8} />
+          ) : empty ? (
+            <ChartEmpty>No requests with a recorded username yet.</ChartEmpty>
+          ) : (
+            <>
+              <TypeLegend />
+              <StackedTypeBars
+                rows={rows.slice(0, TOP_N).map((r) => ({
+                  key: r.submitted_by,
+                  label: <Text size="sm">{r.submitted_by}</Text>,
+                  name: r.submitted_by,
+                  counts: r.counts,
+                  total: r.total,
+                }))}
+              />
+            </>
+          )}
+        </ChartCard>
+
+        <Paper withBorder p="md" radius="md">
+          <Title order={5}>All contributors</Title>
+          <Text size="xs" c="dimmed" mb="md">
+            Every submitter with at least one request, broken down by type and whichever type they submit more of.
+          </Text>
+
+          <Table.ScrollContainer minWidth={720}>
+            <Table striped highlightOnHover verticalSpacing="sm">
+              <Table.Thead>
                 <Table.Tr>
-                  <Table.Td colSpan={COL_SPAN}>
-                    <Text c="red" ta="center">
-                      Error: {(error as Error).message}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {!isLoading && !isError && !rows.length && (
-                <Table.Tr>
-                  <Table.Td colSpan={COL_SPAN}>
-                    <Text c="dimmed" ta="center">
-                      No requests with a recorded username yet.
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {rows.map((r) => (
-                <Table.Tr key={r.submitted_by}>
-                  <Table.Td>{r.submitted_by}</Table.Td>
-                  <Table.Td>{r.total}</Table.Td>
-                  {REQUEST_TYPE_LIST.map((t) => (
-                    <Table.Td key={t}>{r.counts[t]}</Table.Td>
+                  <Table.Th>User</Table.Th>
+                  <Table.Th>Total</Table.Th>
+                  {CHART_TYPE_ORDER.map((t) => (
+                    <Table.Th key={t}>{TYPE_LABELS[t]}</Table.Th>
                   ))}
-                  <Table.Td style={{ minWidth: 120 }}>
-                    <Progress.Root size="lg">
-                      {REQUEST_TYPE_LIST.map((t) => (
-                        <Progress.Section key={t} value={(r.counts[t] / r.total) * 100} color={TYPE_COLORS[t]} />
-                      ))}
-                    </Progress.Root>
-                  </Table.Td>
-                  <Table.Td>
-                    {r.majority_type === 'tie' ? (
-                      <Badge color="gray" variant="light">
-                        Tie
-                      </Badge>
-                    ) : (
-                      <TypeBadge type={r.majority_type} />
-                    )}
-                  </Table.Td>
+                  <Table.Th>Split</Table.Th>
+                  <Table.Th>Majority Type</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Paper>
+              </Table.Thead>
+              <Table.Tbody>
+                {isPending && <TableLoadingRow colSpan={COL_SPAN} />}
+                {empty && (
+                  <Table.Tr>
+                    <Table.Td colSpan={COL_SPAN}>
+                      <Text c="dimmed" ta="center">
+                        No requests with a recorded username yet.
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {rows.map((r) => (
+                  <Table.Tr key={r.submitted_by}>
+                    <Table.Td>{r.submitted_by}</Table.Td>
+                    <Table.Td>{r.total}</Table.Td>
+                    {CHART_TYPE_ORDER.map((t) => (
+                      <Table.Td key={t}>{r.counts[t]}</Table.Td>
+                    ))}
+                    <Table.Td style={{ minWidth: 120 }}>
+                      <Progress.Root size="lg">
+                        {CHART_TYPE_ORDER.map((t) => (
+                          <Progress.Section key={t} value={(r.counts[t] / r.total) * 100} color={TYPE_COLORS[t]} />
+                        ))}
+                      </Progress.Root>
+                    </Table.Td>
+                    <Table.Td>
+                      {r.majority_type === 'tie' ? (
+                        <Badge color="gray" variant="light">
+                          Tie
+                        </Badge>
+                      ) : (
+                        <TypeBadge type={r.majority_type} />
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      </Stack>
     </Container>
   )
 }

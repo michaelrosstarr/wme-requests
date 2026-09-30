@@ -1,6 +1,7 @@
 import { env, waitUntil } from 'cloudflare:workers'
 import { betterAuth } from 'better-auth'
 import { captcha } from 'better-auth/plugins'
+import { passkey } from '@better-auth/passkey'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { withCloudflare } from 'better-auth-cloudflare'
 import { sendPostmarkEmail } from './postmark'
@@ -34,12 +35,19 @@ export function getAuth() {
             enabled: true,
             // Discord's own "email verified" flag is enough to trust the match without
             // also requiring email-verification round-trip on this app's side.
+            // When adding a provider, add it here as well as to socialProviders above and to
+            // SOCIAL_PROVIDERS in src/lib/social-providers.ts.
             trustedProviders: ['discord'],
             // Admin-created/invited users never go through this app's own email-verification
             // flow (see inviteUser/createUser in src/lib/users.ts), so their `emailVerified`
             // stays unset. Requiring it here would mean Discord could never auto-link onto
             // an existing account, defeating the point.
             requireLocalEmailVerified: false,
+            // Lets a signed-in user explicitly link a provider account (from /account) whose
+            // email differs from theirs. Implicit linking at sign-in still requires the email
+            // match, and disableImplicitSignUp above still blocks sign-up, so this doesn't
+            // loosen anything for signed-out users.
+            allowDifferentEmails: true,
           },
         },
         emailAndPassword: {
@@ -67,6 +75,13 @@ export function getAuth() {
           // endpoints — /sign-up/email, /sign-in/email, /request-password-reset — already
           // cover both, even though sign-up itself stays disabled above.
           captcha({ provider: 'cloudflare-turnstile', secretKey: env.TURNSTILE_SECRET_KEY }),
+          // Passkey sign-in isn't behind captcha: WebAuthn is origin-bound and phishing-resistant
+          // on its own. rpID is the bare hostname (`localhost` in dev, which WebAuthn allows).
+          passkey({
+            rpID: new URL(env.BETTER_AUTH_URL).hostname,
+            rpName: 'WME Requests',
+            origin: new URL(env.BETTER_AUTH_URL).origin,
+          }),
           // Cookie-setting plugin for TanStack Start must come last.
           tanstackStartCookies(),
         ],

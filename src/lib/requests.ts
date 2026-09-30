@@ -25,10 +25,7 @@ const REQUEST_SELECT = `SELECT r.*, c.name AS country_name, c.code AS country_co
                          JOIN countries c ON c.id = r.country_id
                          LEFT JOIN regions g ON g.id = r.region_id`
 
-// `access` is null for anonymous (public, view-only) callers — see /routes/index.tsx and
-// /routes/reports.tsx, the only unauthenticated views. There's no anonymous "which country
-// can you see" concept, so a null access means unrestricted, not zero rows.
-export async function getRequests(access: UserAccess | null, searchParams: URLSearchParams) {
+export async function getRequests(access: UserAccess, searchParams: URLSearchParams) {
   const conditions: string[] = []
   const params: unknown[] = []
 
@@ -53,7 +50,7 @@ export async function getRequests(access: UserAccess | null, searchParams: URLSe
     conditions.push('r.status = ?')
     params.push(status)
   }
-  const scope = access ? countryScopeSQL(access, 'r') : null
+  const scope = countryScopeSQL(access, 'r')
   if (scope) {
     conditions.push(scope.clause)
     params.push(...scope.params)

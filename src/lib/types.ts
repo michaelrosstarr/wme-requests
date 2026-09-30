@@ -116,8 +116,17 @@ export interface UserReportRow {
   majority_type: RequestType | 'tie'
 }
 
+export interface CountryReportRow {
+  country_id: number
+  country_name: string
+  country_code: string
+  counts: Record<RequestType, number>
+  total: number
+}
+
 export interface UserReportResponse {
   data: UserReportRow[]
+  countries: CountryReportRow[]
 }
 
 export interface PushSubscription {

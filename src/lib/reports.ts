@@ -29,27 +29,46 @@ export async function getUserReport(access: UserAccess) {
   }
   const statsWhereClause = statsWhere.length ? `WHERE ${statsWhere.join(' AND ')}` : ''
 
-  const rows = await dbAll<{ submitted_by: string; type: RequestType; count: number }>(
-    `SELECT submitted_by, type, SUM(count) AS count
+  const rows = await dbAll<{
+    submitted_by: string
+    country_id: number
+    country_name: string
+    country_code: string
+    type: RequestType
+    count: number
+  }>(
+    `SELECT t.submitted_by, t.country_id, c.name AS country_name, c.code AS country_code, t.type,
+            SUM(t.count) AS count
      FROM (
-       SELECT submitted_by, type, COUNT(*) AS count
+       SELECT submitted_by, country_id, type, COUNT(*) AS count
        FROM requests r
        WHERE ${liveWhere.join(' AND ')}
-       GROUP BY submitted_by, type
+       GROUP BY submitted_by, country_id, type
        UNION ALL
-       SELECT submitted_by, type, count
+       SELECT submitted_by, country_id, type, count
        FROM request_stats rs
        ${statsWhereClause}
-     )
-     GROUP BY submitted_by, type`,
+     ) t
+     JOIN countries c ON c.id = t.country_id
+     GROUP BY t.submitted_by, t.country_id, t.type`,
     [...liveParams, ...statsParams],
   )
 
   const byUser = new Map<string, UserCounts>()
+  const byCountry = new Map<number, { country_id: number; country_name: string; country_code: string; counts: UserCounts }>()
   for (const row of rows) {
-    const entry = byUser.get(row.submitted_by) ?? emptyCounts()
-    entry[row.type] = row.count
-    byUser.set(row.submitted_by, entry)
+    const userEntry = byUser.get(row.submitted_by) ?? emptyCounts()
+    userEntry[row.type] += row.count
+    byUser.set(row.submitted_by, userEntry)
+
+    const countryEntry = byCountry.get(row.country_id) ?? {
+      country_id: row.country_id,
+      country_name: row.country_name,
+      country_code: row.country_code,
+      counts: emptyCounts(),
+    }
+    countryEntry.counts[row.type] += row.count
+    byCountry.set(row.country_id, countryEntry)
   }
 
   const data = [...byUser.entries()]
@@ -67,5 +86,9 @@ export async function getUserReport(access: UserAccess) {
     })
     .sort((a, b) => b.total - a.total)
 
-  return json({ data })
+  const countries = [...byCountry.values()]
+    .map((c) => ({ ...c, total: REQUEST_TYPES.reduce((sum, t) => sum + c.counts[t], 0) }))
+    .sort((a, b) => b.total - a.total)
+
+  return json({ data, countries })
 }

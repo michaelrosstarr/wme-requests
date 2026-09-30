@@ -15,14 +15,16 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as ProtectedAccountRouteImport } from './routes/_protected/account'
 import { Route as ProtectedAdminRouteImport } from './routes/_protected/admin'
 import { Route as ProtectedReportsRouteImport } from './routes/_protected/reports'
+import { Route as ProtectedRequestsRouteImport } from './routes/_protected/requests'
 import { Route as ApiCountriesRouteImport } from './routes/api/countries'
 import { Route as ApiCredentialsRouteImport } from './routes/api/credentials'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
+import { Route as ApiFeedTokenRouteImport } from './routes/api/feed-token'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
@@ -76,11 +78,6 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RequestsRoute = RequestsRouteImport.update({
-  id: '/requests',
-  path: '/requests',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -91,6 +88,11 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProtectedAccountRoute = ProtectedAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => ProtectedRoute,
+} as any)
 const ProtectedAdminRoute = ProtectedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -99,6 +101,11 @@ const ProtectedAdminRoute = ProtectedAdminRouteImport.update({
 const ProtectedReportsRoute = ProtectedReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => ProtectedRoute,
+} as any)
+const ProtectedRequestsRoute = ProtectedRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
   getParentRoute: () => ProtectedRoute,
 } as any)
 const ApiCountriesRoute = ApiCountriesRouteImport.update({
@@ -114,6 +121,11 @@ const ApiCredentialsRoute = ApiCredentialsRouteImport.update({
 const ApiFeedRoute = ApiFeedRouteImport.update({
   id: '/api/feed',
   path: '/api/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFeedTokenRoute = ApiFeedTokenRouteImport.update({
+  id: '/api/feed-token',
+  path: '/api/feed-token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -238,14 +250,16 @@ export interface FileRoutesByFullPath {
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
-  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
+  '/account': typeof ProtectedAccountRoute
   '/admin': typeof ProtectedAdminRoute
   '/reports': typeof ProtectedReportsRoute
+  '/requests': typeof ProtectedRequestsRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
+  '/api/feed-token': typeof ApiFeedTokenRoute
   '/api/health': typeof ApiHealthRoute
   '/api/me': typeof ApiMeRoute
   '/api/requests': typeof ApiRequestsRouteWithChildren
@@ -276,14 +290,16 @@ export interface FileRoutesByTo {
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
-  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
+  '/account': typeof ProtectedAccountRoute
   '/admin': typeof ProtectedAdminRoute
   '/reports': typeof ProtectedReportsRoute
+  '/requests': typeof ProtectedRequestsRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
+  '/api/feed-token': typeof ApiFeedTokenRoute
   '/api/health': typeof ApiHealthRoute
   '/api/me': typeof ApiMeRoute
   '/api/requests': typeof ApiRequestsRouteWithChildren
@@ -316,14 +332,16 @@ export interface FileRoutesById {
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
-  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
+  '/_protected/account': typeof ProtectedAccountRoute
   '/_protected/admin': typeof ProtectedAdminRoute
   '/_protected/reports': typeof ProtectedReportsRoute
+  '/_protected/requests': typeof ProtectedRequestsRoute
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
+  '/api/feed-token': typeof ApiFeedTokenRoute
   '/api/health': typeof ApiHealthRoute
   '/api/me': typeof ApiMeRoute
   '/api/requests': typeof ApiRequestsRouteWithChildren
@@ -356,14 +374,16 @@ export interface FileRouteTypes {
     | '/help'
     | '/login'
     | '/privacy'
-    | '/requests'
     | '/reset-password'
     | '/terms'
+    | '/account'
     | '/admin'
     | '/reports'
+    | '/requests'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
+    | '/api/feed-token'
     | '/api/health'
     | '/api/me'
     | '/api/requests'
@@ -394,14 +414,16 @@ export interface FileRouteTypes {
     | '/help'
     | '/login'
     | '/privacy'
-    | '/requests'
     | '/reset-password'
     | '/terms'
+    | '/account'
     | '/admin'
     | '/reports'
+    | '/requests'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
+    | '/api/feed-token'
     | '/api/health'
     | '/api/me'
     | '/api/requests'
@@ -433,14 +455,16 @@ export interface FileRouteTypes {
     | '/help'
     | '/login'
     | '/privacy'
-    | '/requests'
     | '/reset-password'
     | '/terms'
+    | '/_protected/account'
     | '/_protected/admin'
     | '/_protected/reports'
+    | '/_protected/requests'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
+    | '/api/feed-token'
     | '/api/health'
     | '/api/me'
     | '/api/requests'
@@ -473,12 +497,12 @@ export interface RootRouteChildren {
   HelpRoute: typeof HelpRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
-  RequestsRoute: typeof RequestsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   TermsRoute: typeof TermsRoute
   ApiCountriesRoute: typeof ApiCountriesRouteWithChildren
   ApiCredentialsRoute: typeof ApiCredentialsRouteWithChildren
   ApiFeedRoute: typeof ApiFeedRoute
+  ApiFeedTokenRoute: typeof ApiFeedTokenRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiMeRoute: typeof ApiMeRoute
   ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
@@ -537,13 +561,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/requests': {
-      id: '/requests'
-      path: '/requests'
-      fullPath: '/requests'
-      preLoaderRoute: typeof RequestsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -558,6 +575,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_protected/account': {
+      id: '/_protected/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof ProtectedAccountRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
     '/_protected/admin': {
       id: '/_protected/admin'
       path: '/admin'
@@ -570,6 +594,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ProtectedReportsRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
+    '/_protected/requests': {
+      id: '/_protected/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof ProtectedRequestsRouteImport
       parentRoute: typeof ProtectedRoute
     }
     '/api/countries': {
@@ -591,6 +622,13 @@ declare module '@tanstack/react-router' {
       path: '/api/feed'
       fullPath: '/api/feed'
       preLoaderRoute: typeof ApiFeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/feed-token': {
+      id: '/api/feed-token'
+      path: '/api/feed-token'
+      fullPath: '/api/feed-token'
+      preLoaderRoute: typeof ApiFeedTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/health': {
@@ -758,13 +796,17 @@ declare module '@tanstack/react-router' {
 }
 
 interface ProtectedRouteChildren {
+  ProtectedAccountRoute: typeof ProtectedAccountRoute
   ProtectedAdminRoute: typeof ProtectedAdminRoute
   ProtectedReportsRoute: typeof ProtectedReportsRoute
+  ProtectedRequestsRoute: typeof ProtectedRequestsRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
+  ProtectedAccountRoute: ProtectedAccountRoute,
   ProtectedAdminRoute: ProtectedAdminRoute,
   ProtectedReportsRoute: ProtectedReportsRoute,
+  ProtectedRequestsRoute: ProtectedRequestsRoute,
 }
 
 const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(
@@ -879,12 +921,12 @@ const rootRouteChildren: RootRouteChildren = {
   HelpRoute: HelpRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
-  RequestsRoute: RequestsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   TermsRoute: TermsRoute,
   ApiCountriesRoute: ApiCountriesRouteWithChildren,
   ApiCredentialsRoute: ApiCredentialsRouteWithChildren,
   ApiFeedRoute: ApiFeedRoute,
+  ApiFeedTokenRoute: ApiFeedTokenRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiMeRoute: ApiMeRoute,
   ApiRequestsRoute: ApiRequestsRouteWithChildren,

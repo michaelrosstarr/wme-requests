@@ -156,8 +156,8 @@ function Admin() {
             )}
           </Group>
           <Stack gap="xs">
-            {countriesQuery.isLoading && <CardListLoader />}
-            {!countriesQuery.isLoading && !countries.length && <Text c="dimmed">No countries yet.</Text>}
+            {countriesQuery.isPending && <CardListLoader />}
+            {!countriesQuery.isPending && !countries.length && <Text c="dimmed">No countries yet.</Text>}
             {countries.map((c) => (
               <Card key={c.id} withBorder radius="sm" p="xs">
                 <Group justify="space-between">
@@ -332,8 +332,8 @@ function Admin() {
           )}
         </Group>
         <Stack gap="xs" mb="md">
-          {credentialsQuery.isLoading && <CardListLoader />}
-          {!credentialsQuery.isLoading && !googleCredentials.length && (
+          {credentialsQuery.isPending && <CardListLoader />}
+          {!credentialsQuery.isPending && !googleCredentials.length && (
             <Text c="dimmed" size="sm">
               No Google service accounts yet.
             </Text>
@@ -390,8 +390,8 @@ function Admin() {
           </Button>
         </Group>
         <Stack gap="xs">
-          {credentialsQuery.isLoading && <CardListLoader />}
-          {!credentialsQuery.isLoading && !emailCredentials.length && (
+          {credentialsQuery.isPending && <CardListLoader />}
+          {!credentialsQuery.isPending && !emailCredentials.length && (
             <Text c="dimmed" size="sm">
               No email credentials yet — add your own Postmark, Mailgun, or SMTP credential to use it in an email
               notification channel.
@@ -450,8 +450,8 @@ function Admin() {
             </Group>
           </Group>
           <Stack gap="xs">
-            {usersQuery.isLoading && <CardListLoader />}
-            {!usersQuery.isLoading && !users.length && <Text c="dimmed">No users yet.</Text>}
+            {usersQuery.isPending && <CardListLoader />}
+            {!usersQuery.isPending && !users.length && <Text c="dimmed">No users yet.</Text>}
             {users.map((u) => (
               <Card key={u.id} withBorder radius="sm" p="xs">
                 <Group justify="space-between">

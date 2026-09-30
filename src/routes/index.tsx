@@ -154,12 +154,12 @@ function Landing() {
         </Group>
       </Stack>
       <SimpleGrid cols={{ base: 2, xs: 3, sm: 4, md: 5 }} spacing="sm" mb={64}>
-        {countriesQuery.isLoading &&
+        {countriesQuery.isPending &&
           Array.from({ length: 12 }).map((_, i) => (
             // eslint-disable-next-line react/no-array-index-key
             <Skeleton key={i} height={45} radius="md" />
           ))}
-        {!countriesQuery.isLoading && !countries.length && (
+        {!countriesQuery.isPending && !countries.length && (
           <Text c="dimmed" size="sm">
             No countries configured yet.
           </Text>

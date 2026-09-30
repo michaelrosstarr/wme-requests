@@ -320,11 +320,10 @@ export function useUpdateUserAccess() {
   })
 }
 
-export function useMySubscriptions(enabled: boolean) {
+export function useMySubscriptions() {
   return useQuery({
     queryKey: ['push-subscriptions'],
     queryFn: () => apiFetch<PushSubscription[]>('/push/subscriptions'),
-    enabled,
   })
 }
 
@@ -341,5 +340,20 @@ export function useUnsubscribePush() {
   return useMutation({
     mutationFn: (id: number) => apiFetch(`/push/subscriptions/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['push-subscriptions'] }),
+  })
+}
+
+export function useFeedToken() {
+  return useQuery({
+    queryKey: ['feed-token'],
+    queryFn: () => apiFetch<{ token: string }>('/feed-token'),
+  })
+}
+
+export function useRotateFeedToken() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiFetch<{ token: string }>('/feed-token', { method: 'POST' }),
+    onSuccess: (data) => qc.setQueryData(['feed-token'], data),
   })
 }

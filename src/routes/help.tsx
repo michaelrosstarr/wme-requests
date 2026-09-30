@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Anchor, Card, Code, Container, Group, List, Stack, Text, Title } from '@mantine/core'
-import { Bell, Rss } from 'lucide-react'
+import { Bell, KeyRound, Rss } from 'lucide-react'
 import { PlatformBadge } from '@/lib/labels'
 import type { Platform } from '@/lib/types'
 
@@ -282,21 +282,55 @@ function Help() {
             </Text>
           </Group>
           <Text size="sm" c="dimmed" mb="sm">
-            A read-only, pull-based alternative to the channels above — no admin setup needed, and works for
-            anonymous viewers too. Subscribe in any feed reader instead of receiving pushes.
+            A read-only, pull-based alternative to the channels above — no admin setup needed. Subscribe in any
+            feed reader instead of receiving pushes. You need to be signed in to get a feed URL.
           </Text>
           <List type="ordered" size="sm" spacing={4}>
             <List.Item>
               On the dashboard, pick a country (and optionally a region or type), then click{' '}
               <strong>Copy Feed URL</strong> — it copies a link like{' '}
-              <Code>/api/feed?country_id=3&amp;type=downlock</Code> to your clipboard.
+              <Code>/api/feed?token=…&amp;country_id=3&amp;type=downlock</Code> to your clipboard.
             </List.Item>
             <List.Item>Paste that URL into your feed reader of choice.</List.Item>
             <List.Item>
-              Leave off <Code>country_id</Code> (don't select a country before copying) for a feed of every request
-              across all countries.
+              The <Code>token</Code> is private to you — treat the URL like a password. The feed only ever includes
+              requests from the countries you're assigned to; leave off <Code>country_id</Code> (don't select a
+              country before copying) for a feed covering all of them.
+            </List.Item>
+            <List.Item>
+              If a feed URL leaks, use <strong>Reset feed URL</strong> (the arrow next to Copy Feed URL). Every
+              previously copied URL stops working immediately, so re-copy it into your reader.
             </List.Item>
             <List.Item>The feed is standard RSS 2.0 and updates as soon as new requests come in — no polling delay beyond your reader's own refresh interval.</List.Item>
+          </List>
+        </Card>
+
+        <Card withBorder radius="md" p="md">
+          <Group gap="xs" mb={4}>
+            <KeyRound size={14} />
+            <Text fw={600} size="sm">
+              Passkeys &amp; linked accounts
+            </Text>
+          </Group>
+          <Text size="sm" c="dimmed" mb="sm">
+            Sign in without a password, or with an account you already use elsewhere. Managed from the{' '}
+            <strong>Account</strong> page once you're signed in.
+          </Text>
+          <List type="ordered" size="sm" spacing={4}>
+            <List.Item>
+              Under <strong>Passkeys</strong>, click <strong>Add passkey</strong> and follow your browser's prompt
+              (Touch ID, Windows Hello, your phone, or a security key). Next time, use{' '}
+              <strong>Sign in with passkey</strong> on the login page, or pick the passkey from the email field's
+              autofill.
+            </List.Item>
+            <List.Item>
+              Under <strong>Connected accounts</strong>, click <strong>Connect</strong> to link a provider like
+              Discord — its email doesn't need to match yours. Once linked, you can use it to sign in.
+            </List.Item>
+            <List.Item>
+              You can't remove your last sign-in method, so you can't lock yourself out. Add a passkey or link
+              another account first.
+            </List.Item>
           </List>
         </Card>
       </Stack>

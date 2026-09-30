@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
   Alert,
@@ -14,8 +14,9 @@ import {
   Title,
 } from '@mantine/core'
 import { usePostHog } from '@posthog/react'
-import { Gamepad2, Map } from 'lucide-react'
+import { KeyRound, Map } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
+import { SOCIAL_PROVIDERS, type SocialProviderId } from '@/lib/social-providers'
 import Turnstile, { type TurnstileHandle } from '@/components/Turnstile'
 
 export const Route = createFileRoute('/login')({ component: Login })
@@ -31,7 +32,38 @@ function Login() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [discordLoading, setDiscordLoading] = useState(false)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [socialLoading, setSocialLoading] = useState<SocialProviderId | null>(null)
+
+  async function completeSignIn(method: 'email' | 'passkey') {
+    const { data: session } = await authClient.getSession()
+    if (session?.user.id) {
+      posthog.identify(session.user.id, {
+        email: session.user.email,
+        name: session.user.name,
+      })
+    }
+    posthog.capture('user_signed_in', { authentication_method: method })
+    navigate({ to: '/requests' })
+  }
+
+  // Passkey autofill (WebAuthn conditional UI): offers saved passkeys in the email field's
+  // autofill dropdown. The request stays pending until the user picks one; any failure here
+  // (unsupported, dismissed, or aborted by the explicit button below) is silently ignored.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (typeof PublicKeyCredential === 'undefined') return
+      if (!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return
+      if (cancelled) return
+      const { error: passkeyError } = await authClient.signIn.passkey({ autoFill: true })
+      if (!passkeyError && !cancelled) await completeSignIn('passkey')
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -55,30 +87,34 @@ function Login() {
       setError(signInError.message ?? 'Sign in failed')
       return
     }
-    const { data: session } = await authClient.getSession()
-    if (session?.user.id) {
-      posthog.identify(session.user.id, {
-        email: session.user.email,
-        name: session.user.name,
-      })
-    }
-    posthog.capture('user_signed_in', { authentication_method: 'email' })
-    navigate({ to: '/requests' })
+    await completeSignIn('email')
   }
 
-  async function handleDiscordSignIn() {
+  async function handlePasskeySignIn() {
     setError(null)
-    setDiscordLoading(true)
-    // A user whose Discord email matches an existing account gets linked to it automatically
+    setPasskeyLoading(true)
+    const { error: signInError } = await authClient.signIn.passkey()
+    setPasskeyLoading(false)
+    if (signInError) {
+      setError(signInError.message ?? 'Passkey sign in failed')
+      return
+    }
+    await completeSignIn('passkey')
+  }
+
+  async function handleSocialSignIn(providerId: SocialProviderId, label: string) {
+    setError(null)
+    setSocialLoading(providerId)
+    // A user whose provider email matches an existing account gets linked to it automatically
     // (see the `account.accountLinking` config in src/lib/auth.ts) — there's no separate
-    // "link your account" step to walk them through.
+    // "link your account" step to walk them through. Differing emails can be linked from /account.
     const { error: signInError } = await authClient.signIn.social({
-      provider: 'discord',
+      provider: providerId,
       callbackURL: '/requests',
     })
     if (signInError) {
-      setDiscordLoading(false)
-      setError(signInError.message ?? 'Discord sign in failed')
+      setSocialLoading(null)
+      setError(signInError.message ?? `${label} sign in failed`)
     }
   }
 
@@ -101,6 +137,7 @@ function Login() {
             <TextInput
               label="Email"
               type="email"
+              autoComplete="username webauthn"
               required
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
@@ -128,15 +165,29 @@ function Login() {
           </Stack>
         </form>
         <Divider label="or" my="md" />
-        <Button
-          variant="default"
-          leftSection={<Gamepad2 size={16} />}
-          loading={discordLoading}
-          fullWidth
-          onClick={handleDiscordSignIn}
-        >
-          Sign in with Discord
-        </Button>
+        <Stack gap="xs">
+          <Button
+            variant="default"
+            leftSection={<KeyRound size={16} />}
+            loading={passkeyLoading}
+            fullWidth
+            onClick={handlePasskeySignIn}
+          >
+            Sign in with passkey
+          </Button>
+          {SOCIAL_PROVIDERS.map(({ id, label, icon: Icon }) => (
+            <Button
+              key={id}
+              variant="default"
+              leftSection={<Icon size={16} />}
+              loading={socialLoading === id}
+              fullWidth
+              onClick={() => handleSocialSignIn(id, label)}
+            >
+              Sign in with {label}
+            </Button>
+          ))}
+        </Stack>
       </Paper>
     </Center>
   )

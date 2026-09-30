@@ -8,10 +8,12 @@ import {
   Checkbox,
   Container,
   Group,
+  Menu,
   Pagination,
   Paper,
   Select,
   SimpleGrid,
+  Skeleton,
   Stack,
   Table,
   Text,
@@ -20,25 +22,26 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { usePostHog } from '@posthog/react'
-import { Bell, Camera, CircleCheck, Rss, Trash2, X } from 'lucide-react'
+import { Bell, Camera, ChevronDown, CircleCheck, RotateCcw, Rss, Trash2, X } from 'lucide-react'
 import {
   useCountries,
   useDeleteRequest,
   useDeleteRequests,
+  useFeedToken,
   useMySubscriptions,
   useRegions,
   useRequestStats,
   useRequests,
+  useRotateFeedToken,
   useSubscribePush,
   useUnsubscribePush,
   useUpdateRequestsStatus,
 } from '@/lib/queries'
 import { STATUS_OPTIONS, TypeBadge, fmtDate } from '@/lib/labels'
-import { authClient } from '@/lib/auth-client'
 import { isPushSupported } from '@/lib/push-client'
 import TableLoadingRow from '@/components/TableLoadingRow'
 
-export const Route = createFileRoute('/requests')({ component: Dashboard })
+export const Route = createFileRoute('/_protected/requests')({ component: Dashboard })
 
 const PAGE_SIZE = 50
 const TYPE_OPTIONS = [
@@ -51,8 +54,6 @@ const TYPE_OPTIONS = [
 
 function Dashboard() {
   const posthog = usePostHog()
-  const { data: session } = authClient.useSession()
-  const canEdit = !!session
   const [countryId, setCountryId] = useState<string | null>(null)
   const [regionId, setRegionId] = useState<string | null>(null)
   const [type, setType] = useState<string | null>(null)
@@ -80,10 +81,12 @@ function Dashboard() {
   const deleteRequest = useDeleteRequest()
   const deleteRequests = useDeleteRequests()
   const updateRequestsStatus = useUpdateRequestsStatus()
-  const mySubscriptionsQuery = useMySubscriptions(canEdit)
+  const mySubscriptionsQuery = useMySubscriptions()
   const mySubscriptions = mySubscriptionsQuery.data ?? []
   const subscribePush = useSubscribePush()
   const unsubscribePush = useUnsubscribePush()
+  const feedTokenQuery = useFeedToken()
+  const rotateFeedToken = useRotateFeedToken()
 
   const countries = countriesQuery.data ?? []
   const regions = regionsQuery.data ?? []
@@ -132,16 +135,25 @@ function Dashboard() {
   }
 
   function handleCopyFeedUrl() {
-    const params = new URLSearchParams()
+    const token = feedTokenQuery.data?.token
+    if (!token) return
+    const params = new URLSearchParams({ token })
     if (countryId) params.set('country_id', countryId)
     if (regionId) params.set('region_id', regionId)
     if (type) params.set('type', type)
-    const query = params.toString()
-    const url = window.location.origin + '/api/feed' + (query ? `?${query}` : '')
+    const url = `${window.location.origin}/api/feed?${params}`
     navigator.clipboard.writeText(url).then(
       () => notifications.show({ color: 'blue', message: 'Feed URL copied to clipboard.' }),
       () => notifications.show({ color: 'red', message: 'Could not copy the feed URL.' }),
     )
+  }
+
+  function handleResetFeedUrl() {
+    if (!confirm('Reset your feed URL? Any feed readers using the current URL will stop working.')) return
+    rotateFeedToken.mutate(undefined, {
+      onSuccess: () => notifications.show({ color: 'blue', message: 'Feed URL reset. Copy the new URL to your reader.' }),
+      onError: (e) => notifications.show({ color: 'red', title: 'Failed to reset', message: (e as Error).message }),
+    })
   }
 
   function handleDelete(id: number) {
@@ -220,24 +232,52 @@ function Dashboard() {
             onChange={setStatus}
           />
           <Button onClick={applyFilters}>Apply</Button>
-          <Button variant="light" leftSection={<Rss size={14} />} onClick={handleCopyFeedUrl}>
-            Copy Feed URL
-          </Button>
-          {canEdit && (
-            <Tooltip label={countryId ? undefined : 'Select a country first'} disabled={!!countryId}>
-              <Button
-                variant="light"
-                leftSection={<Bell size={14} />}
-                disabled={!countryId || !isPushSupported()}
-                loading={subscribePush.isPending}
-                onClick={handleNotifyMe}
-              >
-                Notify me
-              </Button>
-            </Tooltip>
-          )}
+          <Group gap={0}>
+            <Button
+              variant="light"
+              leftSection={<Rss size={14} />}
+              disabled={!feedTokenQuery.data}
+              onClick={handleCopyFeedUrl}
+              style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+            >
+              Copy Feed URL
+            </Button>
+            <Menu position="bottom-end">
+              <Menu.Target>
+                <ActionIcon
+                  variant="light"
+                  size={36}
+                  aria-label="Feed URL options"
+                  style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid var(--mantine-color-body)' }}
+                >
+                  <ChevronDown size={14} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  color="red"
+                  leftSection={<RotateCcw size={14} />}
+                  disabled={rotateFeedToken.isPending}
+                  onClick={handleResetFeedUrl}
+                >
+                  Reset feed URL
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
+          <Tooltip label={countryId ? undefined : 'Select a country first'} disabled={!!countryId}>
+            <Button
+              variant="light"
+              leftSection={<Bell size={14} />}
+              disabled={!countryId || !isPushSupported()}
+              loading={subscribePush.isPending}
+              onClick={handleNotifyMe}
+            >
+              Notify me
+            </Button>
+          </Tooltip>
         </Group>
-        {canEdit && mySubscriptions.length > 0 && (
+        {mySubscriptions.length > 0 && (
           <Stack gap={4} mt="sm">
             <Text size="xs" c="dimmed">
               Browser notifications enabled for:
@@ -269,17 +309,17 @@ function Dashboard() {
       </Paper>
 
       <SimpleGrid cols={{ base: 2, sm: 4 }} mb="md">
-        <StatCard label="Total" value={statsQuery.data?.total} />
-        <StatCard label="Pending" value={statsQuery.data?.pending} />
-        <StatCard label="In Progress" value={statsQuery.data?.inProgress} />
-        <StatCard label="Completed" value={statsQuery.data?.completed} />
+        <StatCard label="Total" loading={statsQuery.isPending} value={statsQuery.data?.total} />
+        <StatCard label="Pending" loading={statsQuery.isPending} value={statsQuery.data?.pending} />
+        <StatCard label="In Progress" loading={statsQuery.isPending} value={statsQuery.data?.inProgress} />
+        <StatCard label="Completed" loading={statsQuery.isPending} value={statsQuery.data?.completed} />
       </SimpleGrid>
 
       <Paper withBorder p="md" radius="md">
         <Group justify="space-between" mb="sm">
           <Title order={4}>Requests</Title>
           <Group gap="sm">
-            {canEdit && selectedIds.size > 0 && (
+            {selectedIds.size > 0 && (
               <>
                 <Button
                   size="xs"
@@ -315,16 +355,14 @@ function Dashboard() {
           <Table striped highlightOnHover verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
-                {canEdit && (
-                  <Table.Th style={{ width: 36 }}>
-                    <Checkbox
-                      aria-label="Select all requests on this page"
-                      checked={allOnPageSelected}
-                      indeterminate={someOnPageSelected}
-                      onChange={toggleSelectAll}
-                    />
-                  </Table.Th>
-                )}
+                <Table.Th style={{ width: 36 }}>
+                  <Checkbox
+                    aria-label="Select all requests on this page"
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={toggleSelectAll}
+                  />
+                </Table.Th>
                 <Table.Th>#</Table.Th>
                 <Table.Th>Country</Table.Th>
                 <Table.Th>Type</Table.Th>
@@ -335,14 +373,14 @@ function Dashboard() {
                 <Table.Th>Notes</Table.Th>
                 {/* <Table.Th>Status</Table.Th> */}
                 <Table.Th>Created</Table.Th>
-                {canEdit && <Table.Th />}
+                <Table.Th />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {requestsQuery.isLoading && <TableLoadingRow colSpan={canEdit ? 11 : 9} />}
+              {requestsQuery.isPending && <TableLoadingRow colSpan={11} />}
               {requestsQuery.isError && (
                 <Table.Tr>
-                  <Table.Td colSpan={canEdit ? 11 : 9}>
+                  <Table.Td colSpan={11}>
                     <Text c="red" ta="center">
                       Error: {(requestsQuery.error as Error).message}
                     </Text>
@@ -351,7 +389,7 @@ function Dashboard() {
               )}
               {data && !data.data.length && (
                 <Table.Tr>
-                  <Table.Td colSpan={canEdit ? 11 : 9}>
+                  <Table.Td colSpan={11}>
                     <Text c="dimmed" ta="center">
                       No requests found.
                     </Text>
@@ -360,15 +398,13 @@ function Dashboard() {
               )}
               {data?.data.map((r) => (
                 <Table.Tr key={r.id}>
-                  {canEdit && (
-                    <Table.Td>
-                      <Checkbox
-                        aria-label={`Select request ${r.id}`}
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => toggleSelect(r.id)}
-                      />
-                    </Table.Td>
-                  )}
+                  <Table.Td>
+                    <Checkbox
+                      aria-label={`Select request ${r.id}`}
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => toggleSelect(r.id)}
+                    />
+                  </Table.Td>
                   <Table.Td>{r.id}</Table.Td>
                   <Table.Td>
                     {r.region_code ? `${r.region_code}, ${r.country_code}` : r.country_code}
@@ -415,13 +451,11 @@ function Dashboard() {
                   <Table.Td>
                     <Text size="xs">{fmtDate(r.created_at)}</Text>
                   </Table.Td>
-                  {canEdit && (
-                    <Table.Td>
-                      <ActionIcon color="red" variant="light" onClick={() => handleDelete(r.id)} aria-label="Delete">
-                        <Trash2 size={16} />
-                      </ActionIcon>
-                    </Table.Td>
-                  )}
+                  <Table.Td>
+                    <ActionIcon color="red" variant="light" onClick={() => handleDelete(r.id)} aria-label="Delete">
+                      <Trash2 size={16} />
+                    </ActionIcon>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -444,12 +478,16 @@ function Dashboard() {
   )
 }
 
-function StatCard({ label, value }: Readonly<{ label: string; value?: number }>) {
+function StatCard({ label, value, loading }: Readonly<{ label: string; value?: number; loading: boolean }>) {
   return (
     <Paper withBorder p="md" radius="md" ta="center">
-      <Text size="xl" fw={700}>
-        {value ?? '—'}
-      </Text>
+      {loading ? (
+        <Skeleton height={28} width={48} mx="auto" mb={2} />
+      ) : (
+        <Text size="xl" fw={700}>
+          {value ?? '—'}
+        </Text>
+      )}
       <Text size="xs" c="dimmed">
         {label}
       </Text>

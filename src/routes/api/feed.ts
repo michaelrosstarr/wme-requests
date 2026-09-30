@@ -1,17 +1,21 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { apiRoute } from '@/lib/http'
+import { apiRoute, err } from '@/lib/http'
 import { getFeed } from '@/lib/feed'
+import { getAccessForFeedToken } from '@/lib/feed-tokens'
 
 export const Route = createFileRoute('/api/feed')({
   server: {
     handlers: apiRoute({
-      // Public: the pull-based counterpart to the public dashboard — same unscoped read as
-      // GET /api/requests when unauthenticated.
+      // Public at the session layer because feed readers can't send a cookie — instead the
+      // per-user `token` query param identifies the caller and scopes the feed to their countries.
       GET: {
         public: true,
-        handler: ({ request }) => {
+        handler: async ({ request }) => {
           const url = new URL(request.url)
-          return getFeed(url.searchParams, url.origin)
+          const token = url.searchParams.get('token')
+          const access = token ? await getAccessForFeedToken(token) : null
+          if (!access) return err('Unauthorized', 401)
+          return getFeed(access, url.searchParams, url.origin)
         },
       },
     }),

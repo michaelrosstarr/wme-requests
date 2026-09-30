@@ -1,4 +1,5 @@
 import { dbAll, dbFirst, REQUEST_TYPES, type RequestType } from './db'
+import { countryScopeSQL, type UserAccess } from './access'
 
 interface FeedRequestRow {
   id: number
@@ -33,10 +34,9 @@ function typeLabel(type: RequestType) {
 }
 
 // A read-only RSS 2.0 feed of recent requests — the pull-based counterpart to notification
-// channels and Web Push. Public and unscoped, same as the dashboard's own anonymous view (see
-// getRequests in src/lib/requests.ts): there's no per-viewer "which country can you see"
-// concept for anonymous callers.
-export async function getFeed(searchParams: URLSearchParams, origin: string): Promise<Response> {
+// channels and Web Push. Accessed via a per-user feed token (see src/lib/feed-tokens.ts) and
+// scoped to that user's assigned countries, same as getRequests in src/lib/requests.ts.
+export async function getFeed(access: UserAccess, searchParams: URLSearchParams, origin: string): Promise<Response> {
   const countryId = searchParams.get('country_id')
   const regionId = searchParams.get('region_id')
   const type = searchParams.get('type')
@@ -55,6 +55,11 @@ export async function getFeed(searchParams: URLSearchParams, origin: string): Pr
     conditions.push('r.type = ?')
     params.push(type)
   }
+  const scope = countryScopeSQL(access, 'r')
+  if (scope) {
+    conditions.push(scope.clause)
+    params.push(...scope.params)
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   const rows = await dbAll<FeedRequestRow>(
@@ -66,7 +71,7 @@ export async function getFeed(searchParams: URLSearchParams, origin: string): Pr
     params,
   )
 
-  let scopeLabel = 'All Countries'
+  let scopeLabel = access.isGlobal ? 'All Countries' : 'My Countries'
   if (countryId) {
     const country = await dbFirst<{ name: string }>('SELECT name FROM countries WHERE id = ?', [Number(countryId)])
     scopeLabel = country?.name ?? scopeLabel

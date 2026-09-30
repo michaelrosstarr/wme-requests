@@ -71,6 +71,7 @@ This applies everything under [`migrations/`](migrations/):
 | `0014_google_chat_channel.sql` | `google_chat` notification platform |
 | `0015_push_subscriptions.sql` | `push_subscriptions` — self-service browser Web Push, independent of the channels above |
 | `0016_ntfy_gotify_channels.sql` | `ntfy` and `gotify` notification platforms |
+| `0022_passkey.sql` | `passkey` — WebAuthn credentials for **Sign in with passkey** (managed from the Account page) |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -101,6 +102,10 @@ Also set `vars.BETTER_AUTH_URL` in `wrangler.jsonc` to your deployment's real or
 absolute links in invite and password-reset emails — without it those links would be bare paths
 that don't work outside the app. `.dev.vars` already overrides it to `http://localhost:3000` for
 local dev.
+
+Passkeys are bound to this URL's hostname (their WebAuthn relying-party ID), so pick the
+domain you'll keep: moving to a different domain later leaves existing passkeys unusable, and
+users would have to add new ones from the Account page.
 
 ## 7 — Configure Postmark for system emails (optional)
 
@@ -177,6 +182,20 @@ until configured.
    ```bash
    npm run cf-typegen
    ```
+
+### Adding another OAuth provider later
+
+The login and Account pages both render from the list in
+[`src/lib/social-providers.ts`](src/lib/social-providers.ts). To add a provider (e.g. Google or GitHub):
+
+1. Add an entry to `SOCIAL_PROVIDERS` (`id` must match Better Auth's provider id).
+2. In [`src/lib/auth.ts`](src/lib/auth.ts), add its config to `socialProviders` (with
+   `disableImplicitSignUp: true`, like Discord) and its id to `account.accountLinking.trustedProviders`.
+3. Register the `/api/auth/callback/<id>` redirect with the provider, set its client ID/secret as
+   above, and run `npm run cf-typegen`.
+
+Signed-in users can then link it from **Account → Connected accounts**, even if its email differs
+from theirs.
 
 ## 9 — Configure the Credentials Manager (optional)
 
