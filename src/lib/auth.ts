@@ -4,7 +4,7 @@ import { captcha, twoFactor } from 'better-auth/plugins'
 import { passkey } from '@better-auth/passkey'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { withCloudflare } from 'better-auth-cloudflare'
-import { sendSystemEmail } from './system-email'
+import { renderEmail, sendSystemEmail } from './system-email'
 import { securityKey2fa } from './security-key-2fa'
 import { securityActivity } from './security-activity'
 
@@ -67,8 +67,17 @@ export function getAuth() {
             await sendSystemEmail({
               to: user.email,
               subject: 'Set your WME Requests password',
-              text: `Set your password for WME Requests:\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
-              html: `<p>Set your password for WME Requests:</p><p><a href="${url}">${url}</a></p><p>If you didn't request this, you can ignore this email.</p>`,
+              ...renderEmail({
+                preheader: 'Use this link to set your WME Requests password.',
+                heading: 'Set your password',
+                paragraphs: [
+                  `Hi ${user.name || user.email},`,
+                  // Same email for invites and resets (see the comment above), so it reads for both.
+                  'Use the button below to set the password for your WME Requests account. If you were just invited, this finishes setting up your account.',
+                ],
+                button: { label: 'Set my password', url },
+                footnote: "If you didn't expect this, you can ignore this email — nothing changes until the link is used.",
+              }),
             })
           },
         },
@@ -93,8 +102,13 @@ export function getAuth() {
                 await sendSystemEmail({
                   to: user.email,
                   subject: `${otp} is your WME Requests verification code`,
-                  text: `Your WME Requests verification code is ${otp}\n\nIt expires in 3 minutes. If you didn't just try to sign in, change your password.`,
-                  html: `<p>Your WME Requests verification code is</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p><p>It expires in 3 minutes. If you didn't just try to sign in, change your password.</p>`,
+                  ...renderEmail({
+                    preheader: `Your WME Requests sign-in code is ${otp}.`,
+                    heading: 'Your sign-in code',
+                    paragraphs: ['Enter this code to finish signing in to WME Requests. It expires in 3 minutes.'],
+                    code: otp,
+                    footnote: "If you didn't just try to sign in, someone may know your password — change it right away.",
+                  }),
                 })
               },
             },

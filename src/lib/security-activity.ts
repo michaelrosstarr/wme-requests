@@ -9,7 +9,7 @@ import {
   sessionMiddleware,
 } from 'better-auth/api'
 import { dbAll, dbFirst, dbRun } from './db'
-import { sendSystemEmail } from './system-email'
+import { renderEmail, sendSystemEmail } from './system-email'
 import { SOCIAL_PROVIDERS } from './social-providers'
 import {
   SECURITY_EVENTS,
@@ -117,10 +117,6 @@ function summarize(event: SecurityEventType, detail: SecurityEventDetail) {
   }
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-}
-
 async function sendSecurityEmail(
   user: Actor,
   event: SecurityEventType,
@@ -140,24 +136,14 @@ async function sendSecurityEmail(
   await sendSystemEmail({
     to: user.email,
     subject: `Security alert: ${summary}`,
-    text: [
-      `Hi ${user.name || user.email},`,
-      '',
-      `${summary} on your WME Requests account.`,
-      '',
-      ...rows.map(([k, v]) => `${k}: ${v}`),
-      '',
-      "If this was you, you don't need to do anything.",
-      `If it wasn't, reset your password right away (${base}/forgot-password) and review your sign-in methods (${base}/account).`,
-    ].join('\n'),
-    html: `<p>Hi ${escapeHtml(user.name || user.email)},</p>
-<p><strong>${escapeHtml(summary)}</strong> on your WME Requests account.</p>
-<table cellpadding="4" style="border-collapse:collapse">${rows
-      .map(([k, v]) => `<tr><td style="color:#666">${k}</td><td>${escapeHtml(v)}</td></tr>`)
-      .join('')}</table>
-<p>If this was you, you don't need to do anything.</p>
-<p>If it wasn't, <a href="${base}/forgot-password">reset your password</a> right away and
-<a href="${base}/account">review your sign-in methods</a>.</p>`,
+    ...renderEmail({
+      preheader: `${summary}. If this wasn't you, secure your account.`,
+      heading: 'Security alert',
+      paragraphs: [`Hi ${user.name || user.email},`, `${summary} on your WME Requests account.`],
+      rows,
+      button: { label: 'Review account security', url: `${base}/account` },
+      footnote: `If this was you, you don't need to do anything. If it wasn't, reset your password right away at ${base}/forgot-password.`,
+    }),
   })
 }
 
