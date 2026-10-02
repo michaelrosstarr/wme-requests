@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { getSessionFn } from '@/lib/get-session-fn'
 
-// Sign-in happens on the WazeTools account service; this route only builds the hand-off URL
+// Sign-in happens on the WMEKit account service; this route only builds the hand-off URL
 // (with an absolute ?redirect= back to this app, which the service checks against its
 // allowlist) so existing links to /login keep working.
 export const Route = createFileRoute('/login')({

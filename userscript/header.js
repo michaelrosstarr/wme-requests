@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.8.1
+// @version      2.8.2
 // @description  Send downlock, uplock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
@@ -13,6 +13,7 @@
 // @grant        GM_info
 // @grant        unsafeWindow
 // @license MIT
+// @connect      requests.wmekit.com
 // @connect      requests.wazetools.com
 // @supportURL   https://github.com/michaelrosstarr/wme-requests/issues
 // @updateURL    https://raw.githubusercontent.com/michaelrosstarr/wme-requests/main/userscript/wme-requests.user.js

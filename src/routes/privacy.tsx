@@ -3,7 +3,7 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 
 export const Route = createFileRoute('/privacy')({ component: Privacy })
 
-const CONTACT_EMAIL = 'wazer@wazetools.com'
+const CONTACT_EMAIL = 'wazer@wmekit.com'
 const EFFECTIVE_DATE = '22 September 2026'
 
 function Privacy() {
@@ -57,12 +57,12 @@ function Privacy() {
             </Title>
             <List spacing="xs">
               <List.Item>
-                You sign in with your WazeTools account (auth.wazetools.com), which holds your sign-in details
+                You sign in with your WMEKit account (auth.wmekit.com), which holds your sign-in details
                 (password hash, passkeys, linked Discord account, two-factor settings) and has its own privacy page.
                 WME Requests receives your account ID, name and email address from it.
               </List.Item>
               <List.Item>Which countries you've been given access to, and your RSS feed token.</List.Item>
-              <List.Item>A session cookie, shared across *.wazetools.com, that keeps you signed in.</List.Item>
+              <List.Item>A session cookie, shared across *.wmekit.com, that keeps you signed in.</List.Item>
               <List.Item>
                 If you enable browser push notifications, an opaque push subscription endpoint and encryption keys
                 issued by your browser — these identify a browser installation, not you personally.
@@ -233,7 +233,7 @@ function Privacy() {
             <Title order={2}>7. Security</Title>
             <List spacing="xs">
               <List.Item>All traffic is served over HTTPS via Cloudflare.</List.Item>
-              <List.Item>Sign-in is handled by the WazeTools account service; WME Requests never sees your password.</List.Item>
+              <List.Item>Sign-in is handled by the WMEKit account service; WME Requests never sees your password.</List.Item>
               <List.Item>
                 Third-party integration credentials (bot tokens, service-account keys, SMTP/email credentials) are
                 encrypted at rest with a dedicated encryption key held only as a server-side secret, and are never

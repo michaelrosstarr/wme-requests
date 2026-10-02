@@ -74,7 +74,7 @@ This applies everything under [`migrations/`](migrations/):
 | `0022_passkey.sql` | `passkey` — WebAuthn credentials for **Sign in with passkey** (managed from the Account page) |
 | `0023_two_factor.sql` | `user.twoFactorEnabled`, `twoFactor` and `securityKey` — two-factor authentication (email codes, authenticator app, security keys, backup codes) |
 | `0024_security_events.sql` | `security_events` — per-user security log (sign-ins, failed sign-ins, sign-in method and 2FA changes) shown on the Account page |
-| `0025_central_auth.sql` | `user_access` (who may use this app, `is_global`, `feed_token`), copied from `user` — sign-in moved to the WazeTools account service, and Better Auth's tables (0002, 0022–0024) are no longer used |
+| `0025_central_auth.sql` | `user_access` (who may use this app, `is_global`, `feed_token`), copied from `user` — sign-in moved to the WMEKit account service, and Better Auth's tables (0002, 0022–0024) are no longer used |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -90,9 +90,9 @@ You'll re-run `db:migrate:remote` any time you pull a future update that adds a 
 
 Leave this as-is unless you're doing something unusual — it doesn't need to include your own dashboard's domain (same-origin requests aren't subject to CORS in the first place).
 
-## 6 — Sign-in: the WazeTools account service
+## 6 — Sign-in: the WMEKit account service
 
-Accounts live in the WazeTools account service ([wmeAuth](../wmeAuth), https://auth.wazetools.com),
+Accounts live in the WMEKit account service ([wmeAuth](../wmeAuth), https://auth.wmekit.com),
 shared with WME Sync: password, passkeys, Discord, two-factor, Turnstile, auth emails and the
 security log are all there. Deploy it first (its DEPLOYMENT.md). This app only decides who gets
 in (`user_access`) and which countries they see (`user_countries`).
@@ -107,7 +107,7 @@ Worker-to-worker, so there's no shared secret.
    `AUTH_URL=http://localhost:3001` to `.dev.vars`.
 2. This app's origin must be in wmeAuth's `APP_ORIGINS`, or it won't redirect back here after
    sign-in.
-3. Both must be on the same parent domain: the session cookie is set for `.wazetools.com`.
+3. Both must be on the same parent domain: the session cookie is set for `.wmekit.com`.
 
 ### Moving an existing deployment over
 
@@ -115,7 +115,7 @@ Existing users keep their accounts: wmeAuth's `scripts/import-users.mjs` copies 
 users (same ids, password hashes, Discord links and re-encrypted 2FA) into the account service,
 and migration `0025` gives each of them exactly the access they had. Passkeys and security keys
 can't move (they're bound to this hostname), so those users see a one-time "add your passkey
-again" banner on their WazeTools account page. The order matters — see wmeAuth's DEPLOYMENT.md.
+again" banner on their WMEKit account page. The order matters — see wmeAuth's DEPLOYMENT.md.
 
 ## 7 — (removed) Email Sending
 
@@ -231,9 +231,9 @@ wrangler d1 execute wme-requests --remote --command "INSERT INTO user_access (us
 ```
 
 Everyone after that is managed from **/admin → Users** by a global user: **Add user** finds the
-WazeTools account by email (or has the account service create one and email a link to set a
+WMEKit account by email (or has the account service create one and email a link to set a
 password), **Edit Access** changes their countries, **Reset Password** emails them a reset
-link, and **Remove** takes away their access (their WazeTools account stays).
+link, and **Remove** takes away their access (their WMEKit account stays).
 
 ## 13 — Try it locally
 
@@ -261,6 +261,10 @@ npm run deploy
 ```
 
 This builds and pushes the Worker to Cloudflare. Your app is now live at `https://<project>.<your-subdomain>.workers.dev` (or a custom domain if you've attached one in the Cloudflare dashboard).
+
+Production is `requests.wmekit.com`. Keep `requests.wazetools.com` (the pre-move host) attached as
+well: `src/server-entry.ts` 301s its pages to `APP_URL` but keeps serving `/api/*` there for copies
+of the userscript that haven't updated yet.
 
 If this is your very first deploy and you haven't run step 4's `db:migrate:remote` yet, do that now — the deployed Worker needs the schema in place before it can serve any API requests.
 
@@ -293,11 +297,11 @@ Since `wrangler d1 migrations apply` only runs migrations it hasn't seen before,
 ## Troubleshooting
 
 - **Userscript panel never appears / actions silently do nothing**: open the browser console and look for lines prefixed `[WME Requests]` — the script logs diagnostic info whenever it can't find something it expects from WME's own SDK (selection getter, country lookup, user info, etc.), rather than failing silently.
-- **Signed in, but every page says "Ask an admin for access"**: that WazeTools account has no
+- **Signed in, but every page says "Ask an admin for access"**: that WMEKit account has no
   `user_access` row. A global user adds it from **Admin → Users → Add user** (by email).
 - **Signing in loops back to the account service, or the API answers 401**: the session check
   over the `AUTH` binding failed. Look for "get-session over AUTH binding failed" in the Worker
-  logs, check the `wmeauth` Worker is deployed, and that this app is on a `*.wazetools.com`
+  logs, check the `wmeauth` Worker is deployed, and that this app is on a `*.wmekit.com`
   origin (the cookie isn't sent anywhere else).
 - **"Internal server error" on submit**: almost always a pending D1 migration — re-run `npm run db:migrate:remote`.
 - **CORS errors in the browser console** (only relevant if you're calling the public endpoint from somewhere other than the userscript): check `ALLOWED_ORIGINS` in `wrangler.jsonc` includes the exact origin making the request, then redeploy — this var only takes effect on the next `wrangler deploy`.

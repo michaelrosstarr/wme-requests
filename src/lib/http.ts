@@ -62,7 +62,7 @@ type RouteHandler = ApiHandler | { public: true; handler: ApiHandler }
 
 /**
  * Wraps route method handlers with CORS headers, a preflight OPTIONS response, a 500 fallback,
- * and — unless marked `public: true` — a session check (the shared WazeTools account cookie,
+ * and — unless marked `public: true` — a session check (the shared WMEKit account cookie,
  * checked with wmeAuth over the AUTH binding) that returns 401 when unauthenticated, 403
  * `no_access` for an account nobody has given access to this app, and otherwise resolves the
  * caller's country access onto `ctx.access`.

@@ -80,7 +80,10 @@ interface ReasonModalResult {
 // both. Anyone who just changes the Settings panel's API Base URL to a different host
 // (rather than forking) will instead get a one-time Tampermonkey permission prompt for
 // it, which is expected.
-const DEFAULT_API_BASE = 'https://requests.wazetools.com';
+const DEFAULT_API_BASE = 'https://requests.wmekit.com';
+// Where WME Requests lived before the move to wmekit.com. A saved API base pointing here is moved
+// to the default: signed-in requests need the session cookie, which only exists on .wmekit.com.
+const LEGACY_API_BASE = 'https://requests.wazetools.com';
 
 const SCRIPT_NAME = 'WME Requests';
 const PANEL_ID = 'wme-requests-panel';
@@ -88,6 +91,10 @@ const pageWindow = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window)
 
 // ── State ───────────────────────────────────────────────────────────────────
 let apiBase = GM_getValue('apiBase', DEFAULT_API_BASE);
+if (apiBase.replace(/\/+$/, '') === LEGACY_API_BASE) {
+  apiBase = DEFAULT_API_BASE;
+  GM_setValue('apiBase', apiBase);
+}
 // 'full' (text only), 'compact' (icon + text), or 'icon' (icon only) — style of the
 // always-visible floating Downlock/Imagery buttons. See applyFabStyle().
 let fabStyle = GM_getValue<FabStyle>('fabStyle', 'full');

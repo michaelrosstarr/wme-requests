@@ -7,7 +7,7 @@ import { CircleUserRound, LogIn, LogOut, Map, UserCog } from 'lucide-react'
 import { accountLink, useSession } from '@/lib/session'
 import SigningOutOverlay from '@/components/SigningOutOverlay'
 
-// `authOnly` links need access to this app, not just a signed-in WazeTools account.
+// `authOnly` links need access to this app, not just a signed-in WMEKit account.
 const NAV_LINKS = [
   { to: '/', label: 'Home', authOnly: false },
   { to: '/requests', label: 'Requests', authOnly: true },
@@ -35,7 +35,7 @@ export default function AppHeader() {
   }, [posthog, session?.user.email, session?.user.id, session?.user.name])
 
   // Signing out happens on the account service (it clears the shared cookie for every
-  // WazeTools app), which then sends the browser back to our home page.
+  // WMEKit app), which then sends the browser back to our home page.
   // The overlay stays up until the browser has left for the account service.
   function handleSignOut() {
     if (signingOut) return
@@ -88,7 +88,7 @@ export default function AppHeader() {
                 </Menu.Label>
                 <Menu.Divider />
                 <Menu.Item component="a" href={accountLink(authUrl, '/account')} leftSection={<UserCog size={14} />}>
-                  WazeTools account
+                  WMEKit account
                 </Menu.Item>
                 <Menu.Item leftSection={<LogOut size={14} />} onClick={handleSignOut}>
                   Sign out
@@ -139,7 +139,7 @@ export default function AppHeader() {
                 justify="flex-start"
                 onClick={closeDrawer}
               >
-                WazeTools account
+                WMEKit account
               </Button>
               <Button variant="default" leftSection={<LogOut size={14} />} fullWidth justify="flex-start" onClick={handleSignOut}>
                 Sign out

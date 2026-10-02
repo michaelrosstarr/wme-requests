@@ -62,7 +62,7 @@ export default function InviteUserModal({ opened, onClose }: Readonly<Props>) {
       <form onSubmit={form.onSubmit(handleSubmit)}>
         <Stack>
           <Text size="sm" c="dimmed">
-            If they already have a WazeTools account (the sign-in shared with WME Sync), they get access straight
+            If they already have a WMEKit account (the sign-in shared with WME Sync), they get access straight
             away. Otherwise one is created and they're emailed a link to set a password.
           </Text>
           <TextInput label="Name" placeholder="e.g. Jane Doe" disabled={invite.isPending} {...form.getInputProps('name')} />

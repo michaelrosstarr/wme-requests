@@ -25,13 +25,15 @@
 		// caller of the public POST /api/requests endpoint — everything else (the dashboard)
 		// is same-origin and unaffected by this. Includes both waze.com and www.waze.com
 		// since Waze's own generated links use the bare domain while the app may serve under www.
-		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wazetools.com",
+		// requests.wazetools.com is the pre-move host: still attached (custom domains are set in the
+		// dashboard) and still serving /api, so it stays allowed.
+		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wmekit.com,https://requests.wazetools.com",
 		// This app's own origin, for absolute ?redirect= URLs back from the account service and
 		// the link in "set your password" emails sent when an admin adds someone.
-		"APP_URL": "https://requests.wazetools.com",
-		// The WazeTools account service (wmeAuth) where people sign in. Its session cookie covers
-		// .wazetools.com; sessions are checked over the AUTH service binding below.
-		"AUTH_URL": "https://auth.wazetools.com",
+		"APP_URL": "https://requests.wmekit.com",
+		// The WMEKit account service (wmeAuth) where people sign in. Its session cookie covers
+		// .wmekit.com; sessions are checked over the AUTH service binding below.
+		"AUTH_URL": "https://auth.wmekit.com",
 		// Web Push VAPID public key — safe to expose (it's sent to the browser as
 		// applicationServerKey). The matching private key is WEB_PUSH_VAPID_PRIVATE_JWK,
 		// a secret — see DEPLOYMENT.md. Placeholder; replace with your own generated pair.
@@ -49,7 +51,7 @@
 			"remote": true
 		}
 	],
-	// The WazeTools account service (Worker "wmeauth"). Sessions are validated with
+	// The WMEKit account service (Worker "wmeauth"). Sessions are validated with
 	// AUTH.fetch(".../api/auth/get-session"), and it has RPC methods for looking up and inviting
 	// users (see src/lib/central-auth.ts). Worker-to-worker, so no public hop and no shared secret.
 	"services": [

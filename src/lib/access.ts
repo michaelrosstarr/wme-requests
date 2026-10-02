@@ -7,7 +7,7 @@ export interface UserAccess {
 }
 
 /**
- * The user's access to this app, or `null` if they have none: any WazeTools account can sign in,
+ * The user's access to this app, or `null` if they have none: any WMEKit account can sign in,
  * but only users an admin has added (a `user_access` row) get in.
  */
 export async function getUserAccess(userId: string): Promise<UserAccess | null> {

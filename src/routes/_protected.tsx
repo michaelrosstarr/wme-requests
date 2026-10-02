@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_protected')({
   beforeLoad: async ({ location }) => {
     const { session, authUrl, appUrl } = await getSessionFn()
     if (!session) {
-      // /login hands off to the WazeTools account service and brings them back here.
+      // /login hands off to the WMEKit account service and brings them back here.
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
     return { session, authUrl, appUrl }
@@ -20,7 +20,7 @@ export const Route = createFileRoute('/_protected')({
 
 function Protected() {
   const { session, authUrl, appUrl } = Route.useRouteContext()
-  // Any WazeTools account can sign in; only users an admin has added get further.
+  // Any WMEKit account can sign in; only users an admin has added get further.
   if (!session.access) return <NoAccess email={session.user.email} authUrl={authUrl} appUrl={appUrl} />
   return <Outlet />
 }

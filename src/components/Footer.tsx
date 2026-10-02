@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Anchor, Container, Divider, Group, Text } from '@mantine/core'
 
-const CONTACT_EMAIL = 'wazer@wazetools.com'
+const CONTACT_EMAIL = 'wazer@wmekit.com'
 
 export default function Footer() {
   return (

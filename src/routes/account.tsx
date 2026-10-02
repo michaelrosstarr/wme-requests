@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { getSessionFn } from '@/lib/get-session-fn'
 
-// Account settings (password, passkeys, 2FA, Discord, security log) live on the WazeTools
+// Account settings (password, passkeys, 2FA, Discord, security log) live on the WMEKit
 // account service now; this keeps old /account links working.
 export const Route = createFileRoute('/account')({
   beforeLoad: async () => {

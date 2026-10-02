@@ -13,7 +13,7 @@ A full-stack tool for Waze Map Editor (WME) that lets editors send **downlock** 
 | API | TanStack Start server routes (`src/routes/api/**`), folded into the same Worker |
 | Database | Cloudflare D1 (SQLite-compatible managed DB) |
 | Dashboard | Mantine UI components rendered by TanStack Start (`src/routes/`, `src/components/`) |
-| Auth | The shared WazeTools account service ([wmeAuth](../wmeAuth), auth.wazetools.com), reached over a Cloudflare service binding. This app keeps only who has access (`user_access`, `user_countries`) |
+| Auth | The shared WMEKit account service ([wmeAuth](../wmeAuth), auth.wmekit.com), reached over a Cloudflare service binding. This app keeps only who has access (`user_access`, `user_countries`) |
 | Notifications | Outbound `fetch()` to Slack, Discord and Telegram webhooks/bots |
 
 ---
@@ -74,7 +74,7 @@ This applies every file under [`migrations/`](migrations/) that hasn't run yet �
 
 ### 5 — Sign-in
 
-Sign-in is the WazeTools account service ([wmeAuth](../wmeAuth)), shared with WME Sync. Deploy it
+Sign-in is the WMEKit account service ([wmeAuth](../wmeAuth)), shared with WME Sync. Deploy it
 first. `wrangler.jsonc` binds it as `AUTH` (`services`) and sets `APP_URL` / `AUTH_URL`; this
 app's origin must be in wmeAuth's `APP_ORIGINS`. There are no auth secrets here.
 
@@ -113,13 +113,13 @@ Your app will be live at `https://<project>.<your-subdomain>.workers.dev`.
 
 ## Authentication
 
-The dashboard and nearly every API endpoint require a session: the WazeTools account cookie
-(scoped to `.wazetools.com`), which `apiRoute` checks with wmeAuth over the `AUTH` service
+The dashboard and nearly every API endpoint require a session: the WMEKit account cookie
+(scoped to `.wmekit.com`), which `apiRoute` checks with wmeAuth over the `AUTH` service
 binding. The one exception is `POST /api/requests` — that's the endpoint the Tampermonkey
 userscript calls cross-origin from `waze.com`, which has no way to complete an interactive
 login, so it stays open.
 
-Anyone can create a WazeTools account, so an account alone gets you nothing here: you also need
+Anyone can create a WMEKit account, so an account alone gets you nothing here: you also need
 a `user_access` row, which global users grant from **Admin → Users → Add user** (that finds the
 account by email, or has the account service create one and email a "set your password" link).
 Without one, pages show "Ask an admin for access" and the API answers `403` with
@@ -279,8 +279,8 @@ Set these in `wrangler.jsonc` under `vars`:
 | Variable | Default | Description |
 |---|---|---|
 | `ALLOWED_ORIGINS` | `https://waze.com,https://www.waze.com,https://beta.waze.com` | Comma-separated CORS allowlist, or `*` for any origin. Only the request's actual `Origin` header is echoed back if it exact-matches an entry — unlisted origins get no `Access-Control-Allow-Origin` header at all, which the browser treats as a CORS failure. This only affects cross-origin `fetch`/`XHR` calls (i.e. the public `POST /api/requests` endpoint called from a web page); it does **not** gate `GM_xmlhttpRequest` calls made by the userscript itself, since those are a browser-extension-privileged request type that bypasses CORS enforcement entirely — the restriction's real value is stopping an arbitrary website's client-side JS from posting fake requests through a visiting user's browser. |
-| `APP_URL` | `https://requests.wazetools.com` | This app's own origin, for redirects back from the account service and links in "set your password" emails. |
-| `AUTH_URL` | `https://auth.wazetools.com` | The WazeTools account service, where people sign in and manage their account. |
+| `APP_URL` | `https://requests.wmekit.com` | This app's own origin, for redirects back from the account service and links in "set your password" emails. |
+| `AUTH_URL` | `https://auth.wmekit.com` | The WMEKit account service, where people sign in and manage their account. |
 
 The `AUTH` service binding (`services` in `wrangler.jsonc`) points at the `wmeauth` Worker.
 

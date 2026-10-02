@@ -3,7 +3,7 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 
 export const Route = createFileRoute('/terms')({ component: Terms })
 
-const CONTACT_EMAIL = 'wazer@wazetools.com'
+const CONTACT_EMAIL = 'wazer@wmekit.com'
 const EFFECTIVE_DATE = '22 September 2026'
 
 function Terms() {
@@ -45,7 +45,7 @@ function Terms() {
             <Title order={2}>2. Accounts</Title>
             <List spacing="xs">
               <List.Item>
-                You sign in with a WazeTools account (auth.wazetools.com). Access to the dashboard is granted by an
+                You sign in with a WMEKit account (auth.wmekit.com). Access to the dashboard is granted by an
                 existing admin — having an account alone doesn't give access.
               </List.Item>
               <List.Item>You're responsible for keeping your login credentials confidential and for all activity under your account.</List.Item>

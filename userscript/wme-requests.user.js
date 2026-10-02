@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.8.1
+// @version      2.8.2
 // @description  Send downlock, uplock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
@@ -13,6 +13,7 @@
 // @grant        GM_info
 // @grant        unsafeWindow
 // @license MIT
+// @connect      requests.wmekit.com
 // @connect      requests.wazetools.com
 // @supportURL   https://github.com/michaelrosstarr/wme-requests/issues
 // @updateURL    https://raw.githubusercontent.com/michaelrosstarr/wme-requests/main/userscript/wme-requests.user.js
@@ -30,12 +31,19 @@
   // both. Anyone who just changes the Settings panel's API Base URL to a different host
   // (rather than forking) will instead get a one-time Tampermonkey permission prompt for
   // it, which is expected.
-  const DEFAULT_API_BASE = 'https://requests.wazetools.com';
+  const DEFAULT_API_BASE = 'https://requests.wmekit.com';
+  // Where WME Requests lived before the move to wmekit.com. A saved API base pointing here is moved
+  // to the default: signed-in requests need the session cookie, which only exists on .wmekit.com.
+  const LEGACY_API_BASE = 'https://requests.wazetools.com';
   const SCRIPT_NAME = 'WME Requests';
   const PANEL_ID = 'wme-requests-panel';
   const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   // ── State ───────────────────────────────────────────────────────────────────
   let apiBase = GM_getValue('apiBase', DEFAULT_API_BASE);
+  if (apiBase.replace(/\/+$/, '') === LEGACY_API_BASE) {
+    apiBase = DEFAULT_API_BASE;
+    GM_setValue('apiBase', apiBase);
+  }
   // 'full' (text only), 'compact' (icon + text), or 'icon' (icon only) — style of the
   // always-visible floating Downlock/Imagery buttons. See applyFabStyle().
   let fabStyle = GM_getValue('fabStyle', 'full');

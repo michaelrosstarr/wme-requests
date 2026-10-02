@@ -309,26 +309,26 @@ function Help() {
           <Group gap="xs" mb={4}>
             <ShieldCheck size={14} />
             <Text fw={600} size="sm">
-              Your WazeTools account
+              Your WMEKit account
             </Text>
           </Group>
           <Text size="sm" c="dimmed" mb="sm">
-            You sign in to WME Requests with your WazeTools account at <strong>auth.wazetools.com</strong> — the same
-            account works for WME Sync and other WazeTools apps.
+            You sign in to WME Requests with your WMEKit account at <strong>auth.wmekit.com</strong> — the same
+            account works for WME Sync and other WMEKit apps.
           </Text>
           <List type="ordered" size="sm" spacing={4}>
             <List.Item>
               Your password, passkeys, connected Discord account, two-factor authentication and recent security activity
-              are all managed there: open the profile menu and choose <strong>WazeTools account</strong>.
+              are all managed there: open the profile menu and choose <strong>WMEKit account</strong>.
             </List.Item>
             <List.Item>
               Having an account isn't enough on its own: a global admin adds you to WME Requests and picks which
               countries you can see. Until then you'll see "Ask an admin for access".
             </List.Item>
             <List.Item>
-              Passkeys and security keys you added here before the move were tied to requests.wazetools.com and need
-              adding again on your WazeTools account. Your password, Discord sign-in and authenticator app carried
-              over.
+              WazeTools is now WMEKit. Passkeys and security keys were tied to the old wazetools.com address, so
+              any you added before the move need adding again on your WMEKit account. Your password, Discord
+              sign-in and authenticator app carried over.
             </List.Item>
           </List>
         </Card>

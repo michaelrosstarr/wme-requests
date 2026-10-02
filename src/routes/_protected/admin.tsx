@@ -157,7 +157,7 @@ function Admin() {
   async function handleRemoveAccess(u: AdminUser) {
     const ok = await confirmDialog({
       title: 'Remove access',
-      message: `${u.email} will no longer be able to use WME Requests, and their push subscriptions are deleted. Their WazeTools account isn't affected.`,
+      message: `${u.email} will no longer be able to use WME Requests, and their push subscriptions are deleted. Their WMEKit account isn't affected.`,
       confirmLabel: 'Remove access',
       danger: true,
     })

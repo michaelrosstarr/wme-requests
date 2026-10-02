@@ -6,12 +6,12 @@ import { getUserAccess, type UserAccess } from './access'
 
 export interface AppSession {
   user: { id: string; name: string; email: string }
-  /** Null for a WazeTools account nobody has given access to this app yet. */
+  /** Null for a WMEKit account nobody has given access to this app yet. */
   access: UserAccess | null
 }
 
 /**
- * The signed-in user (from the WazeTools account service) plus their access to this app, and the
+ * The signed-in user (from the WMEKit account service) plus their access to this app, and the
  * account service's URL so pages can link to sign-in / account / sign-out there, and this app's
  * own origin for building absolute ?redirect= URLs back.
  */

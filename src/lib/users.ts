@@ -4,7 +4,7 @@ import { json, err } from './http'
 import { authService, ensureLocalUser, type AccountUser } from './central-auth'
 import type { UserAccess } from './access'
 
-// Accounts live in the WazeTools account service (wmeAuth); this app only decides who gets in
+// Accounts live in the WMEKit account service (wmeAuth); this app only decides who gets in
 // and what they can see. "Users" here are the accounts with a user_access row. Names, emails and
 // account status come from wmeAuth over the AUTH binding.
 
@@ -117,7 +117,7 @@ async function writeAccess(userId: string, isGlobal: boolean, countryIds: number
 }
 
 /**
- * Gives someone access by email. The account service finds their WazeTools account or creates
+ * Gives someone access by email. The account service finds their WMEKit account or creates
  * one and emails them a link to set a password, which then brings them back here.
  */
 export async function inviteUser(access: UserAccess, body: { name?: string; email?: string } & AccessBody) {
@@ -168,7 +168,7 @@ export async function updateUserAccess(access: UserAccess, id: string, body: Acc
   return json(await getRow(id))
 }
 
-/** Takes away someone's access (their WazeTools account itself is untouched). */
+/** Takes away someone's access (their WMEKit account itself is untouched). */
 export async function removeUserAccess(access: UserAccess, id: string) {
   const denied = requireGlobal(access)
   if (denied) return denied

@@ -3,8 +3,8 @@ import { dbFirst, getDb } from './db'
 
 const nowIso = () => new Date().toISOString()
 
-// Sign-in lives in the central WazeTools account service (wmeAuth, auth.wazetools.com). Its
-// session cookie is scoped to .wazetools.com, so the browser sends it here too; we never parse
+// Sign-in lives in the central WMEKit account service (wmeAuth, auth.wmekit.com). Its
+// session cookie is scoped to .wmekit.com, so the browser sends it here too; we never parse
 // it ourselves, we hand it to wmeAuth over the AUTH service binding (worker-to-worker, no
 // public hop). wmeAuth owns identity; this app owns authorization (`user_access`,
 // `user_countries`, see src/lib/access.ts) and data.
@@ -40,11 +40,16 @@ interface AuthService {
   sendPasswordEmail(input: { userId: string; redirect?: string }): Promise<void>
 }
 
+// Skips the get-session call when there's no session cookie at all. wmeAuth's cookie prefix was
+// "wazetools" before the move to wmekit.com; accepting both keeps this working whichever of
+// wmeAuth and this app deploys first.
+const SESSION_COOKIES = ['wmekit.session_', 'wazetools.session_']
+
 export function authService() {
   return env.AUTH as unknown as Fetcher & AuthService
 }
 
-/** Where the account pages live, e.g. https://auth.wazetools.com. */
+/** Where the account pages live, e.g. https://auth.wmekit.com. */
 export function authUrl(path = '/') {
   return new URL(path, env.AUTH_URL).href
 }
@@ -56,7 +61,7 @@ export function authUrl(path = '/') {
  */
 export async function getCentralSession(headers: Headers): Promise<{ user: CentralUser | null; setCookies: string[] }> {
   const cookie = headers.get('cookie')
-  if (!cookie?.includes('wazetools.session_')) return { user: null, setCookies: [] }
+  if (!cookie || !SESSION_COOKIES.some((name) => cookie.includes(name))) return { user: null, setCookies: [] }
   // The binding routes straight to the wmeauth Worker whatever the URL's host; using its real
   // URL just keeps Better Auth (and Vite's host check in dev) happy.
   const res = await authService().fetch(authUrl('/api/auth/get-session'), { headers: { cookie } })
