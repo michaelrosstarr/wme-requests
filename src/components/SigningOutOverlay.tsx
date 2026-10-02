@@ -4,7 +4,7 @@ import { Loader, Overlay, Paper, Stack, Text, Transition } from '@mantine/core'
 /** Signing-out card: on its own (the /logout page) or inside the overlay below. */
 export function SigningOutCard() {
   return (
-    <Paper withBorder shadow="md" radius="md" px="xl" py="lg" w={180}>
+    <Paper withBorder shadow="md" radius="md" px="xl" py="lg" w={240}>
       <Stack align="center" gap="sm">
         <Loader type="dots" />
         <Text size="sm" fw={500}>
