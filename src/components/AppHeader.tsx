@@ -2,9 +2,10 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { ActionIcon, Anchor, Burger, Button, Container, Divider, Drawer, Group, Menu, Stack, Text, Title } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { usePostHog } from '@posthog/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { CircleUserRound, LogIn, LogOut, Map, UserCog } from 'lucide-react'
 import { accountLink, useSession } from '@/lib/session'
+import SigningOutOverlay from '@/components/SigningOutOverlay'
 
 // `authOnly` links need access to this app, not just a signed-in WazeTools account.
 const NAV_LINKS = [
@@ -22,6 +23,7 @@ export default function AppHeader() {
   const session = data?.session
   const authUrl = data?.authUrl ?? ''
   const [drawerOpened, { toggle: toggleDrawer, close: closeDrawer }] = useDisclosure(false)
+  const [signingOut, setSigningOut] = useState(false)
   const visibleLinks = NAV_LINKS.filter((link) => !link.authOnly || session?.access)
 
   useEffect(() => {
@@ -34,7 +36,10 @@ export default function AppHeader() {
 
   // Signing out happens on the account service (it clears the shared cookie for every
   // WazeTools app), which then sends the browser back to our home page.
+  // The overlay stays up until the browser has left for the account service.
   function handleSignOut() {
+    if (signingOut) return
+    setSigningOut(true)
     posthog.capture('user_signed_out')
     posthog.reset()
     closeDrawer()
@@ -43,6 +48,7 @@ export default function AppHeader() {
 
   return (
     <Container size="xl" component="header" py="md">
+      <SigningOutOverlay visible={signingOut} />
       <Group justify="space-between" wrap="nowrap">
         <Title order={3}>
           <Anchor component={Link} to="/" underline="never" c="inherit">

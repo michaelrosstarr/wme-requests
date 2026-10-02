@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { Button, Center, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { LogOut, ShieldAlert } from 'lucide-react'
 import { getSessionFn } from '@/lib/get-session-fn'
 import { accountLink } from '@/lib/session'
+import SigningOutOverlay from '@/components/SigningOutOverlay'
 
 export const Route = createFileRoute('/_protected')({
   beforeLoad: async ({ location }) => {
@@ -24,8 +26,10 @@ function Protected() {
 }
 
 function NoAccess({ email, authUrl, appUrl }: { email: string; authUrl: string; appUrl: string }) {
+  const [signingOut, setSigningOut] = useState(false)
   return (
     <Center mih="60vh">
+      <SigningOutOverlay visible={signingOut} />
       <Paper withBorder p="xl" radius="md" maw={440}>
         <Stack>
           <Title order={3}>
@@ -49,6 +53,7 @@ function NoAccess({ email, authUrl, appUrl }: { email: string; authUrl: string; 
               variant="subtle"
               component="a"
               href={accountLink(authUrl, '/logout', `${appUrl}/`)}
+              onClick={() => setSigningOut(true)}
               leftSection={<LogOut size={14} />}
             >
               Use a different account
