@@ -1,8 +1,12 @@
-import { hashPassword } from 'better-auth/crypto'
-import { dbAll, dbFirst, dbRun, isEmail } from './db'
+import { env } from 'cloudflare:workers'
+import { dbAll, dbFirst, getDb, isEmail } from './db'
 import { json, err } from './http'
-import { getAuth } from './auth'
+import { authService, ensureLocalUser, type AccountUser } from './central-auth'
 import type { UserAccess } from './access'
+
+// Accounts live in the WazeTools account service (wmeAuth); this app only decides who gets in
+// and what they can see. "Users" here are the accounts with a user_access row. Names, emails and
+// account status come from wmeAuth over the AUTH binding.
 
 export interface AdminUserRow {
   id: string
@@ -16,50 +20,69 @@ export interface AdminUserRow {
 }
 
 // User management is itself a global-only capability — a country-scoped editor shouldn't be
-// able to create accounts or grant other users (including themselves) broader access.
+// able to add users or grant other users (including themselves) broader access.
 function requireGlobal(access: UserAccess) {
   return access.isGlobal ? null : err('Only global users can manage users', 403)
 }
 
-async function attachCountryIds(rows: Omit<AdminUserRow, 'countryIds'>[]): Promise<AdminUserRow[]> {
+/** wmeAuth RPC errors arrive as "<status>: <message>"; turn them back into a JSON error. */
+function rpcError(e: unknown) {
+  const m = /^(\d{3}): (.*)$/s.exec(e instanceof Error ? e.message : String(e))
+  if (m) return err(m[2], Number(m[1]))
+  throw e
+}
+
+interface AccessRow {
+  id: string
+  name: string
+  email: string
+  createdAt: string
+  isGlobal: number
+}
+
+const SELECT_ACCESS = `SELECT ua.user_id AS id, u.name, u.email, ua.created_at AS createdAt, ua.is_global AS isGlobal
+  FROM user_access ua JOIN "user" u ON u.id = ua.user_id`
+
+async function toAdminRows(rows: AccessRow[]): Promise<AdminUserRow[]> {
   if (!rows.length) return []
+  const ids = rows.map((r) => r.id)
   const links = await dbAll<{ user_id: string; country_id: number }>(
-    `SELECT user_id, country_id FROM user_countries WHERE user_id IN (${rows.map(() => '?').join(',')})`,
-    rows.map((r) => r.id),
+    `SELECT user_id, country_id FROM user_countries WHERE user_id IN (${ids.map(() => '?').join(',')})`,
+    ids,
   )
   const byUser = new Map<string, number[]>()
   for (const link of links) byUser.set(link.user_id, [...(byUser.get(link.user_id) ?? []), link.country_id])
-  return rows.map((r) => ({ ...r, countryIds: byUser.get(r.id) ?? [] }))
+  // Fresh name/email/status from the account service; the local copy is only a fallback.
+  const central = new Map<string, AccountUser>()
+  try {
+    for (const u of await authService().getUsers(ids)) central.set(u.id, u)
+  } catch (e) {
+    console.error('getUsers over AUTH binding failed', e)
+  }
+  return rows.map((r) => {
+    const c = central.get(r.id)
+    return {
+      id: r.id,
+      name: c?.name ?? r.name,
+      email: c?.email ?? r.email,
+      emailVerified: c?.emailVerified ? 1 : 0,
+      createdAt: r.createdAt,
+      hasPassword: c ? (c.hasPassword ? 1 : 0) : 1,
+      isGlobal: r.isGlobal,
+      countryIds: byUser.get(r.id) ?? [],
+    }
+  })
 }
 
 export async function listUsers(access: UserAccess) {
   const denied = requireGlobal(access)
   if (denied) return denied
-  const rows = await dbAll<Omit<AdminUserRow, 'countryIds'>>(
-    `SELECT u.id, u.name, u.email, u.emailVerified, u.createdAt, u.is_global AS isGlobal,
-            CASE WHEN a.id IS NOT NULL THEN 1 ELSE 0 END AS hasPassword
-     FROM "user" u
-     LEFT JOIN "account" a ON a.userId = u.id AND a.providerId = 'credential'
-     ORDER BY u.createdAt DESC`,
-  )
-  return json(await attachCountryIds(rows))
-}
-
-async function findByEmail(email: string) {
-  return dbFirst<{ id: string }>(`SELECT id FROM "user" WHERE email = ?`, [email])
+  return json(await toAdminRows(await dbAll<AccessRow>(`${SELECT_ACCESS} ORDER BY ua.created_at DESC`)))
 }
 
 async function getRow(id: string) {
-  const row = await dbFirst<Omit<AdminUserRow, 'countryIds'>>(
-    `SELECT u.id, u.name, u.email, u.emailVerified, u.createdAt, u.is_global AS isGlobal,
-            CASE WHEN a.id IS NOT NULL THEN 1 ELSE 0 END AS hasPassword
-     FROM "user" u
-     LEFT JOIN "account" a ON a.userId = u.id AND a.providerId = 'credential'
-     WHERE u.id = ?`,
-    [id],
-  )
-  if (!row) return null
-  return (await attachCountryIds([row]))[0]
+  const row = await dbFirst<AccessRow>(`${SELECT_ACCESS} WHERE ua.user_id = ?`, [id])
+  return row ? (await toAdminRows([row]))[0] : null
 }
 
 interface AccessBody {
@@ -77,86 +100,85 @@ function resolveAccess(body: AccessBody): { error: Response } | { isGlobal: bool
   return { isGlobal, countryIds }
 }
 
-async function setUserCountries(userId: string, isGlobal: boolean, countryIds: number[]) {
-  await dbRun(`UPDATE "user" SET is_global = ? WHERE id = ?`, [isGlobal ? 1 : 0, userId])
-  await dbRun(`DELETE FROM user_countries WHERE user_id = ?`, [userId])
-  for (const countryId of countryIds) {
-    await dbRun(`INSERT INTO user_countries (user_id, country_id) VALUES (?, ?)`, [userId, countryId])
-  }
+async function writeAccess(userId: string, isGlobal: boolean, countryIds: number[]) {
+  const db = getDb()
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO user_access (user_id, is_global) VALUES (?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET is_global = excluded.is_global`,
+      )
+      .bind(userId, isGlobal ? 1 : 0),
+    db.prepare(`DELETE FROM user_countries WHERE user_id = ?`).bind(userId),
+    ...countryIds.map((countryId) =>
+      db.prepare(`INSERT INTO user_countries (user_id, country_id) VALUES (?, ?)`).bind(userId, countryId),
+    ),
+  ])
 }
 
-export async function createUser(
-  access: UserAccess,
-  body: { name?: string; email?: string; password?: string } & AccessBody,
-) {
-  const denied = requireGlobal(access)
-  if (denied) return denied
-  const { name, password } = body
-  const email = body.email?.trim().toLowerCase()
-  if (!email || !isEmail(email)) return err('A valid email is required')
-  if (!password || password.length < 8) return err('Password must be at least 8 characters')
-  if (await findByEmail(email)) return err('A user with that email already exists', 409)
-  const resolved = resolveAccess(body)
-  if ('error' in resolved) return resolved.error
-
-  const userId = crypto.randomUUID()
-  const now = new Date().toISOString()
-  const hash = await hashPassword(password)
-  await dbRun(
-    `INSERT INTO "user" ("id","name","email","emailVerified","is_global","createdAt","updatedAt") VALUES (?,?,?,1,?,?,?)`,
-    [userId, name?.trim() || email, email, resolved.isGlobal ? 1 : 0, now, now],
-  )
-  await dbRun(
-    `INSERT INTO "account" ("id","accountId","providerId","userId","password","createdAt","updatedAt") VALUES (?,?,'credential',?,?,?,?)`,
-    [crypto.randomUUID(), userId, userId, hash, now, now],
-  )
-  for (const countryId of resolved.countryIds) {
-    await dbRun(`INSERT INTO user_countries (user_id, country_id) VALUES (?, ?)`, [userId, countryId])
-  }
-  return json(await getRow(userId), 201)
-}
-
+/**
+ * Gives someone access by email. The account service finds their WazeTools account or creates
+ * one and emails them a link to set a password, which then brings them back here.
+ */
 export async function inviteUser(access: UserAccess, body: { name?: string; email?: string } & AccessBody) {
   const denied = requireGlobal(access)
   if (denied) return denied
-  const { name } = body
   const email = body.email?.trim().toLowerCase()
   if (!email || !isEmail(email)) return err('A valid email is required')
-  if (await findByEmail(email)) return err('A user with that email already exists', 409)
   const resolved = resolveAccess(body)
   if ('error' in resolved) return resolved.error
 
-  const userId = crypto.randomUUID()
-  const now = new Date().toISOString()
-  // No account row yet — the invite email's reset-password link creates one once
-  // they set a password (see sendResetPassword in src/lib/auth.ts).
-  await dbRun(
-    `INSERT INTO "user" ("id","name","email","emailVerified","is_global","createdAt","updatedAt") VALUES (?,?,?,0,?,?,?)`,
-    [userId, name?.trim() || email, email, resolved.isGlobal ? 1 : 0, now, now],
-  )
-  for (const countryId of resolved.countryIds) {
-    await dbRun(`INSERT INTO user_countries (user_id, country_id) VALUES (?, ?)`, [userId, countryId])
+  let user: AccountUser
+  try {
+    ;({ user } = await authService().inviteUser({
+      email,
+      name: body.name?.trim() || undefined,
+      redirect: new URL('/requests', env.APP_URL).href,
+    }))
+  } catch (e) {
+    return rpcError(e)
   }
-  await getAuth().api.requestPasswordReset({ body: { email, redirectTo: '/reset-password' } })
-  return json(await getRow(userId), 201)
+  if (await dbFirst(`SELECT 1 FROM user_access WHERE user_id = ?`, [user.id])) {
+    return err('That user already has access', 409)
+  }
+  await ensureLocalUser(user)
+  await writeAccess(user.id, resolved.isGlobal, resolved.countryIds)
+  return json(await getRow(user.id), 201)
 }
 
 export async function resetUserPassword(access: UserAccess, id: string) {
   const denied = requireGlobal(access)
   if (denied) return denied
-  const user = await dbFirst<{ email: string }>(`SELECT email FROM "user" WHERE id = ?`, [id])
-  if (!user) return err('User not found', 404)
-  await getAuth().api.requestPasswordReset({ body: { email: user.email, redirectTo: '/reset-password' } })
+  if (!(await dbFirst(`SELECT 1 FROM user_access WHERE user_id = ?`, [id]))) return err('User not found', 404)
+  try {
+    await authService().sendPasswordEmail({ userId: id, redirect: new URL('/requests', env.APP_URL).href })
+  } catch (e) {
+    return rpcError(e)
+  }
   return json({ status: true })
 }
 
 export async function updateUserAccess(access: UserAccess, id: string, body: AccessBody) {
   const denied = requireGlobal(access)
   if (denied) return denied
-  const existing = await dbFirst<{ id: string }>(`SELECT id FROM "user" WHERE id = ?`, [id])
-  if (!existing) return err('User not found', 404)
+  if (!(await dbFirst(`SELECT 1 FROM user_access WHERE user_id = ?`, [id]))) return err('User not found', 404)
   const resolved = resolveAccess(body)
   if ('error' in resolved) return resolved.error
-  await setUserCountries(id, resolved.isGlobal, resolved.countryIds)
+  await writeAccess(id, resolved.isGlobal, resolved.countryIds)
   return json(await getRow(id))
+}
+
+/** Takes away someone's access (their WazeTools account itself is untouched). */
+export async function removeUserAccess(access: UserAccess, id: string) {
+  const denied = requireGlobal(access)
+  if (denied) return denied
+  if (id === access.userId) return err("You can't remove your own access", 400)
+  const db = getDb()
+  const [, res] = await db.batch([
+    db.prepare(`DELETE FROM user_countries WHERE user_id = ?`).bind(id),
+    db.prepare(`DELETE FROM user_access WHERE user_id = ?`).bind(id),
+    db.prepare(`DELETE FROM push_subscriptions WHERE user_id = ?`).bind(id),
+  ])
+  if (!res.meta.changes) return err('User not found', 404)
+  return new Response(null, { status: 204 })
 }

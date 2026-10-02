@@ -26,17 +26,12 @@
 		// is same-origin and unaffected by this. Includes both waze.com and www.waze.com
 		// since Waze's own generated links use the bare domain while the app may serve under www.
 		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wazetools.com",
-		// The "From" address for auth emails (password reset / invite / 2FA codes), sent through
-		// the EMAIL binding below. Its domain must be onboarded to Cloudflare Email Sending
-		// (`wrangler email sending enable <domain>`) — see DEPLOYMENT.md.
-		"AUTH_EMAIL_FROM": "requests@notify.wazetools.com",
-		// The dashboard's own deployed origin — required so invite/password-reset emails
-		// link to an absolute URL instead of a bare path.
-		"BETTER_AUTH_URL": "https://requests.wazetools.com",
-		// Discord OAuth application's Client ID — not secret (it's embedded in the browser
-		// authorize-URL anyway). The Client Secret is a Worker secret — see DEPLOYMENT.md.
-		// Placeholder; replace with your own Discord application's Client ID.
-		"DISCORD_CLIENT_ID": "1549709267475374100",
+		// This app's own origin, for absolute ?redirect= URLs back from the account service and
+		// the link in "set your password" emails sent when an admin adds someone.
+		"APP_URL": "https://requests.wazetools.com",
+		// The WazeTools account service (wmeAuth) where people sign in. Its session cookie covers
+		// .wazetools.com; sessions are checked over the AUTH service binding below.
+		"AUTH_URL": "https://auth.wazetools.com",
 		// Web Push VAPID public key — safe to expose (it's sent to the browser as
 		// applicationServerKey). The matching private key is WEB_PUSH_VAPID_PRIVATE_JWK,
 		// a secret — see DEPLOYMENT.md. Placeholder; replace with your own generated pair.
@@ -54,12 +49,13 @@
 			"remote": true
 		}
 	],
-	// Cloudflare Email Sending, used for auth emails (src/lib/system-email.ts). No API token
-	// needed. `remote: true` makes `vite dev` send real emails too, since there's no local emulation.
-	"send_email": [
+	// The WazeTools account service (Worker "wmeauth"). Sessions are validated with
+	// AUTH.fetch(".../api/auth/get-session"), and it has RPC methods for looking up and inviting
+	// users (see src/lib/central-auth.ts). Worker-to-worker, so no public hop and no shared secret.
+	"services": [
 		{
-			"name": "EMAIL",
-			"remote": true
+			"binding": "AUTH",
+			"service": "wmeauth"
 		}
 	],
 	"r2_buckets": [

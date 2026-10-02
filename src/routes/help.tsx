@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Anchor, Card, Code, Container, Group, List, Stack, Text, Title } from '@mantine/core'
-import { Bell, KeyRound, Rss, ShieldCheck } from 'lucide-react'
+import { Bell, Rss, ShieldCheck } from 'lucide-react'
 import { PlatformBadge } from '@/lib/labels'
 import type { Platform } from '@/lib/types'
 
@@ -307,65 +307,28 @@ function Help() {
 
         <Card withBorder radius="md" p="md">
           <Group gap="xs" mb={4}>
-            <KeyRound size={14} />
-            <Text fw={600} size="sm">
-              Passkeys &amp; linked accounts
-            </Text>
-          </Group>
-          <Text size="sm" c="dimmed" mb="sm">
-            Sign in without a password, or with an account you already use elsewhere. Managed from the{' '}
-            <strong>Account</strong> page once you're signed in.
-          </Text>
-          <List type="ordered" size="sm" spacing={4}>
-            <List.Item>
-              Under <strong>Passkeys</strong>, click <strong>Add passkey</strong> and follow your browser's prompt
-              (Touch ID, Windows Hello, your phone, or a security key). Next time, use{' '}
-              <strong>Sign in with passkey</strong> on the login page, or pick the passkey from the email field's
-              autofill.
-            </List.Item>
-            <List.Item>
-              Under <strong>Connected accounts</strong>, click <strong>Connect</strong> to link a provider like
-              Discord — its email doesn't need to match yours. Once linked, you can use it to sign in.
-            </List.Item>
-            <List.Item>
-              You can't remove your last sign-in method, so you can't lock yourself out. Add a passkey or link
-              another account first.
-            </List.Item>
-          </List>
-        </Card>
-
-        <Card withBorder radius="md" p="md">
-          <Group gap="xs" mb={4}>
             <ShieldCheck size={14} />
             <Text fw={600} size="sm">
-              Two-factor authentication
+              Your WazeTools account
             </Text>
           </Group>
           <Text size="sm" c="dimmed" mb="sm">
-            Adds a second step after your password. Turn it on from the <strong>Account</strong> page (you need a
-            password set).
+            You sign in to WME Requests with your WazeTools account at <strong>auth.wazetools.com</strong> — the same
+            account works for WME Sync and other WazeTools apps.
           </Text>
           <List type="ordered" size="sm" spacing={4}>
             <List.Item>
-              Click <strong>Turn on</strong>, confirm your password, then enter the code we email you. Save the backup
-              codes it shows — each one signs you in once if you can't use your other methods.
+              Your password, passkeys, connected Discord account, two-factor authentication and recent security activity
+              are all managed there: open the profile menu and choose <strong>WazeTools account</strong>.
             </List.Item>
             <List.Item>
-              Email codes always work once 2FA is on. Optionally add an <strong>authenticator app</strong> (scan the QR
-              code) or a <strong>security key</strong> such as a YubiKey, and pick whichever is handy when signing in.
+              Having an account isn't enough on its own: a global admin adds you to WME Requests and picks which
+              countries you can see. Until then you'll see "Ask an admin for access".
             </List.Item>
             <List.Item>
-              Tick <strong>Trust this device for 30 days</strong> at the code prompt to skip the second step on that
-              browser.
-            </List.Item>
-            <List.Item>
-              We email you whenever your password, passkeys, security keys, 2FA settings or connected accounts
-              change, and the Account page lists recent sign-ins and changes under{' '}
-              <strong>Recent security activity</strong>. If you see something you didn't do, reset your password.
-            </List.Item>
-            <List.Item>
-              2FA applies to password sign-in. Passkeys already count as two factors, and Discord sign-in relies on
-              your Discord account's own security — turn on 2FA in Discord too.
+              Passkeys and security keys you added here before the move were tied to requests.wazetools.com and need
+              adding again on your WazeTools account. Your password, Discord sign-in and authenticator app carried
+              over.
             </List.Item>
           </List>
         </Card>

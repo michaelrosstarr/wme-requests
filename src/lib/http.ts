@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers'
-import { getAuth } from './auth'
+import { getCentralSession } from './central-auth'
 import { getUserAccess, type UserAccess } from './access'
 import { captureServerException } from './posthog-server'
 
@@ -10,8 +10,8 @@ export function json(data: unknown, status = 200, extra: HeadersInit = {}) {
   })
 }
 
-export function err(message: string, status = 400) {
-  return json({ error: message }, status)
+export function err(message: string, status = 400, extra: Record<string, unknown> = {}) {
+  return json({ error: message, ...extra }, status)
 }
 
 // ALLOWED_ORIGINS is a comma-separated allowlist (or "*" for any origin). Unlike a bare
@@ -39,9 +39,11 @@ function corsHeaders(requestOrigin: string | null) {
   return headers
 }
 
-function withCors(response: Response, requestOrigin: string | null) {
+// `setCookies`: refreshed session cookies from the account service, passed on to the browser.
+function withCors(response: Response, requestOrigin: string | null, setCookies: string[] = []) {
   const headers = new Headers(response.headers)
   for (const [k, v] of Object.entries(corsHeaders(requestOrigin))) headers.set(k, v)
+  for (const c of setCookies) headers.append('Set-Cookie', c)
   return new Response(response.body, { status: response.status, headers })
 }
 
@@ -60,8 +62,10 @@ type RouteHandler = ApiHandler | { public: true; handler: ApiHandler }
 
 /**
  * Wraps route method handlers with CORS headers, a preflight OPTIONS response, a 500 fallback,
- * and — unless marked `public: true` — a session check that returns 401 when unauthenticated
- * and resolves the caller's country access onto `ctx.access`.
+ * and — unless marked `public: true` — a session check (the shared WazeTools account cookie,
+ * checked with wmeAuth over the AUTH binding) that returns 401 when unauthenticated, 403
+ * `no_access` for an account nobody has given access to this app, and otherwise resolves the
+ * caller's country access onto `ctx.access`.
  */
 export function apiRoute(handlers: Partial<Record<'GET' | 'POST' | 'PUT' | 'DELETE', RouteHandler>>) {
   const wrapped: Record<string, (ctx: Omit<ApiContext, 'access'>) => Promise<Response> | Response> = {
@@ -74,13 +78,18 @@ export function apiRoute(handlers: Partial<Record<'GET' | 'POST' | 'PUT' | 'DELE
     wrapped[method] = async (ctx) => {
       const origin = ctx.request.headers.get('Origin')
       let access: UserAccess | null = null
+      let refreshedCookies: string[] = []
       try {
         if (!isPublic) {
-          const session = await getAuth().api.getSession({ headers: ctx.request.headers })
-          if (!session) return withCors(err('Unauthorized', 401), origin)
-          access = await getUserAccess(session.user.id)
+          const { user, setCookies } = await getCentralSession(ctx.request.headers)
+          refreshedCookies = setCookies
+          if (!user) return withCors(err('Unauthorized', 401), origin, refreshedCookies)
+          access = await getUserAccess(user.id)
+          if (!access) {
+            return withCors(err('You have not been given access to WME Requests', 403, { code: 'no_access' }), origin, refreshedCookies)
+          }
         }
-        return withCors(await handler({ ...ctx, access }), origin)
+        return withCors(await handler({ ...ctx, access }), origin, refreshedCookies)
       } catch (e) {
         await captureServerException(e, ctx.request, access?.userId)
         console.error(e)

@@ -58,11 +58,12 @@ export default function InviteUserModal({ opened, onClose }: Readonly<Props>) {
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Invite User" closeOnClickOutside={!invite.isPending} closeOnEscape={!invite.isPending}>
+    <Modal opened={opened} onClose={onClose} title="Add User" closeOnClickOutside={!invite.isPending} closeOnEscape={!invite.isPending}>
       <form onSubmit={form.onSubmit(handleSubmit)}>
         <Stack>
           <Text size="sm" c="dimmed">
-            Sends an email with a link to set their own password.
+            If they already have a WazeTools account (the sign-in shared with WME Sync), they get access straight
+            away. Otherwise one is created and they're emailed a link to set a password.
           </Text>
           <TextInput label="Name" placeholder="e.g. Jane Doe" disabled={invite.isPending} {...form.getInputProps('name')} />
           <TextInput
@@ -86,7 +87,7 @@ export default function InviteUserModal({ opened, onClose }: Readonly<Props>) {
               Cancel
             </Button>
             <Button type="submit" loading={invite.isPending}>
-              Send Invite
+              Add User
             </Button>
           </Group>
         </Stack>

@@ -45,7 +45,8 @@ function Terms() {
             <Title order={2}>2. Accounts</Title>
             <List spacing="xs">
               <List.Item>
-                Dashboard accounts are provisioned or invited by an existing admin — there's no public sign-up.
+                You sign in with a WazeTools account (auth.wazetools.com). Access to the dashboard is granted by an
+                existing admin — having an account alone doesn't give access.
               </List.Item>
               <List.Item>You're responsible for keeping your login credentials confidential and for all activity under your account.</List.Item>
               <List.Item>
@@ -94,7 +95,7 @@ function Terms() {
           <Stack gap="sm">
             <Title order={2}>5. Third-party services</Title>
             <Text>
-              The Service runs on Cloudflare (Workers, D1, R2, Turnstile) and uses PostHog for analytics; admins may
+              The Service runs on Cloudflare (Workers, D1, R2) and uses PostHog for analytics; admins may
               additionally connect Slack, Discord, Telegram, Google, Postmark, Mailgun, SMTP, ntfy, or Gotify. Your
               use of any such integration is also subject to that third party's own terms — we don't control, and
               aren't responsible for, their availability, content, or practices. See our{' '}

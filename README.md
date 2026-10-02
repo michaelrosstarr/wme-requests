@@ -13,7 +13,7 @@ A full-stack tool for Waze Map Editor (WME) that lets editors send **downlock** 
 | API | TanStack Start server routes (`src/routes/api/**`), folded into the same Worker |
 | Database | Cloudflare D1 (SQLite-compatible managed DB) |
 | Dashboard | Mantine UI components rendered by TanStack Start (`src/routes/`, `src/components/`) |
-| Auth | [Better Auth](https://better-auth.com) (email + password) via `better-auth-cloudflare`, sessions stored in D1 |
+| Auth | The shared WazeTools account service ([wmeAuth](../wmeAuth), auth.wazetools.com), reached over a Cloudflare service binding. This app keeps only who has access (`user_access`, `user_countries`) |
 | Notifications | Outbound `fetch()` to Slack, Discord and Telegram webhooks/bots |
 
 ---
@@ -72,33 +72,32 @@ npm run db:migrate:remote
 
 This applies every file under [`migrations/`](migrations/) that hasn't run yet — currently the app schema, auth schema, `editor_rank`, and `custom_prefix` migrations. See [`DEPLOYMENT.md`](DEPLOYMENT.md#4--apply-the-schema) for the full list.
 
-### 5 — Configure the auth secret
+### 5 — Sign-in
+
+Sign-in is the WazeTools account service ([wmeAuth](../wmeAuth)), shared with WME Sync. Deploy it
+first. `wrangler.jsonc` binds it as `AUTH` (`services`) and sets `APP_URL` / `AUTH_URL`; this
+app's origin must be in wmeAuth's `APP_ORIGINS`. There are no auth secrets here.
+
+### 6 — Give the first admin access
+
+Sign up (or sign in) on the account service, open this app once (you'll see "Ask an admin for
+access", which also creates your local user row), then grant yourself global access:
 
 ```bash
-# Local development — add to .dev.vars (already gitignored)
-echo "BETTER_AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> .dev.vars
-
-# Production
-wrangler secret put BETTER_AUTH_SECRET
+wrangler d1 execute wme-requests --remote --command "INSERT INTO user_access (user_id, is_global) SELECT id, 1 FROM \"user\" WHERE email = 'you@example.com'"
 ```
 
-### 6 — Create the first admin user
-
-The dashboard has no public sign-up page — accounts are provisioned directly in D1:
-
-```bash
-node scripts/create-admin-user.mjs you@example.com 'your-password' "Your Name"
-# Prints two INSERT statements; run them against your database:
-wrangler d1 execute wme-requests --local  --command "$(node scripts/create-admin-user.mjs you@example.com 'your-password' "Your Name")"
-wrangler d1 execute wme-requests --remote --command "$(node scripts/create-admin-user.mjs you@example.com 'your-password' "Your Name")"
-```
+Global users add everyone else from **Admin → Users → Add user**.
 
 ### 7 — Local development
 
 ```bash
-npm run dev
-# Opens http://localhost:3000 — you'll be redirected to /login
+(cd ../wmeAuth && npm run dev)   # the account service, on :3001
+npm run dev                      # http://localhost:3000; /admin etc. hand off to :3001 to sign in
 ```
+
+Careful: the D1 binding in `wrangler.jsonc` has `"remote": true`, so `npm run dev` uses the
+**production** database.
 
 ### 8 — Deploy to Cloudflare Workers
 
@@ -114,9 +113,17 @@ Your app will be live at `https://<project>.<your-subdomain>.workers.dev`.
 
 ## Authentication
 
-The dashboard (`/` and `/admin`) and nearly every API endpoint require a logged-in session (email + password via Better Auth). The one exception is `POST /api/requests` — that's the endpoint the Tampermonkey userscript calls cross-origin from `waze.com`, which has no way to complete an interactive login, so it stays open.
+The dashboard and nearly every API endpoint require a session: the WazeTools account cookie
+(scoped to `.wazetools.com`), which `apiRoute` checks with wmeAuth over the `AUTH` service
+binding. The one exception is `POST /api/requests` — that's the endpoint the Tampermonkey
+userscript calls cross-origin from `waze.com`, which has no way to complete an interactive
+login, so it stays open.
 
-Sign-up is disabled at the API level (`disableSignUp: true` in `src/lib/auth.ts`), not just hidden from the UI — new accounts can only be created via [`scripts/create-admin-user.mjs`](scripts/create-admin-user.mjs) (see step 6 above).
+Anyone can create a WazeTools account, so an account alone gets you nothing here: you also need
+a `user_access` row, which global users grant from **Admin → Users → Add user** (that finds the
+account by email, or has the account service create one and email a "set your password" link).
+Without one, pages show "Ask an admin for access" and the API answers `403` with
+`code: "no_access"`.
 
 ---
 
@@ -272,13 +279,10 @@ Set these in `wrangler.jsonc` under `vars`:
 | Variable | Default | Description |
 |---|---|---|
 | `ALLOWED_ORIGINS` | `https://waze.com,https://www.waze.com,https://beta.waze.com` | Comma-separated CORS allowlist, or `*` for any origin. Only the request's actual `Origin` header is echoed back if it exact-matches an entry — unlisted origins get no `Access-Control-Allow-Origin` header at all, which the browser treats as a CORS failure. This only affects cross-origin `fetch`/`XHR` calls (i.e. the public `POST /api/requests` endpoint called from a web page); it does **not** gate `GM_xmlhttpRequest` calls made by the userscript itself, since those are a browser-extension-privileged request type that bypasses CORS enforcement entirely — the restriction's real value is stopping an arbitrary website's client-side JS from posting fake requests through a visiting user's browser. |
-| `AUTH_EMAIL_FROM` | — | The "From" address for the app's own emails (invites, password resets, two-factor codes), sent through the `EMAIL` Cloudflare Email Sending binding. Its domain must be onboarded with `wrangler email sending enable` — see [DEPLOYMENT.md](DEPLOYMENT.md) step 7. |
+| `APP_URL` | `https://requests.wazetools.com` | This app's own origin, for redirects back from the account service and links in "set your password" emails. |
+| `AUTH_URL` | `https://auth.wazetools.com` | The WazeTools account service, where people sign in and manage their account. |
 
-Set as a secret, not a plain var (see [Configure the auth secret](#5--configure-the-auth-secret)):
-
-| Secret | Description |
-|---|---|
-| `BETTER_AUTH_SECRET` | Signs and encrypts session cookies |
+The `AUTH` service binding (`services` in `wrangler.jsonc`) points at the `wmeauth` Worker.
 
 Per-channel notification credentials (Slack/Discord webhook URLs, Telegram bot token + chat ID, email recipient) are stored **in the database**, scoped to each channel; email channels send through a BYOK credential from the Credentials Manager.
 

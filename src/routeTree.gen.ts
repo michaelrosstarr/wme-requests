@@ -11,13 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProtectedRouteImport } from './routes/_protected'
-import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as TermsRouteImport } from './routes/terms'
-import { Route as ProtectedAccountRouteImport } from './routes/_protected/account'
 import { Route as ProtectedAdminRouteImport } from './routes/_protected/admin'
 import { Route as ProtectedReportsRouteImport } from './routes/_protected/reports'
 import { Route as ProtectedRequestsRouteImport } from './routes/_protected/requests'
@@ -30,7 +28,6 @@ import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiScreenshotsRouteImport } from './routes/api/screenshots'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiChannelsIdRouteImport } from './routes/api/channels/$id'
 import { Route as ApiCountriesIdRouteImport } from './routes/api/countries/$id'
 import { Route as ApiCredentialsIdRouteImport } from './routes/api/credentials/$id'
@@ -58,9 +55,9 @@ const ProtectedRoute = ProtectedRouteImport.update({
   id: '/_protected',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
-  id: '/forgot-password',
-  path: '/forgot-password',
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HelpRoute = HelpRouteImport.update({
@@ -78,20 +75,10 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
   getParentRoute: () => rootRouteImport,
-} as any)
-const ProtectedAccountRoute = ProtectedAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
-  getParentRoute: () => ProtectedRoute,
 } as any)
 const ProtectedAdminRoute = ProtectedAdminRouteImport.update({
   id: '/admin',
@@ -151,11 +138,6 @@ const ApiScreenshotsRoute = ApiScreenshotsRouteImport.update({
 const ApiUsersRoute = ApiUsersRouteImport.update({
   id: '/api/users',
   path: '/api/users',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChannelsIdRoute = ApiChannelsIdRouteImport.update({
@@ -246,13 +228,11 @@ const ApiUsersIdResetPasswordRoute = ApiUsersIdResetPasswordRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/forgot-password': typeof ForgotPasswordRoute
+  '/account': typeof AccountRoute
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
-  '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
-  '/account': typeof ProtectedAccountRoute
   '/admin': typeof ProtectedAdminRoute
   '/reports': typeof ProtectedReportsRoute
   '/requests': typeof ProtectedRequestsRoute
@@ -265,7 +245,6 @@ export interface FileRoutesByFullPath {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/screenshots': typeof ApiScreenshotsRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
@@ -286,13 +265,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/forgot-password': typeof ForgotPasswordRoute
+  '/account': typeof AccountRoute
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
-  '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
-  '/account': typeof ProtectedAccountRoute
   '/admin': typeof ProtectedAdminRoute
   '/reports': typeof ProtectedReportsRoute
   '/requests': typeof ProtectedRequestsRoute
@@ -305,7 +282,6 @@ export interface FileRoutesByTo {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/screenshots': typeof ApiScreenshotsRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
@@ -328,13 +304,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_protected': typeof ProtectedRouteWithChildren
-  '/forgot-password': typeof ForgotPasswordRoute
+  '/account': typeof AccountRoute
   '/help': typeof HelpRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
-  '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
-  '/_protected/account': typeof ProtectedAccountRoute
   '/_protected/admin': typeof ProtectedAdminRoute
   '/_protected/reports': typeof ProtectedReportsRoute
   '/_protected/requests': typeof ProtectedRequestsRoute
@@ -347,7 +321,6 @@ export interface FileRoutesById {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/screenshots': typeof ApiScreenshotsRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
@@ -370,13 +343,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/forgot-password'
+    | '/account'
     | '/help'
     | '/login'
     | '/privacy'
-    | '/reset-password'
     | '/terms'
-    | '/account'
     | '/admin'
     | '/reports'
     | '/requests'
@@ -389,7 +360,6 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/screenshots'
     | '/api/users'
-    | '/api/auth/$'
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
@@ -410,13 +380,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/forgot-password'
+    | '/account'
     | '/help'
     | '/login'
     | '/privacy'
-    | '/reset-password'
     | '/terms'
-    | '/account'
     | '/admin'
     | '/reports'
     | '/requests'
@@ -429,7 +397,6 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/screenshots'
     | '/api/users'
-    | '/api/auth/$'
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
@@ -451,13 +418,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_protected'
-    | '/forgot-password'
+    | '/account'
     | '/help'
     | '/login'
     | '/privacy'
-    | '/reset-password'
     | '/terms'
-    | '/_protected/account'
     | '/_protected/admin'
     | '/_protected/reports'
     | '/_protected/requests'
@@ -470,7 +435,6 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/screenshots'
     | '/api/users'
-    | '/api/auth/$'
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
@@ -493,11 +457,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProtectedRoute: typeof ProtectedRouteWithChildren
-  ForgotPasswordRoute: typeof ForgotPasswordRoute
+  AccountRoute: typeof AccountRoute
   HelpRoute: typeof HelpRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
-  ResetPasswordRoute: typeof ResetPasswordRoute
   TermsRoute: typeof TermsRoute
   ApiCountriesRoute: typeof ApiCountriesRouteWithChildren
   ApiCredentialsRoute: typeof ApiCredentialsRouteWithChildren
@@ -508,7 +471,6 @@ export interface RootRouteChildren {
   ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
   ApiScreenshotsRoute: typeof ApiScreenshotsRouteWithChildren
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiChannelsIdRoute: typeof ApiChannelsIdRouteWithChildren
   ApiPushSubscribeRoute: typeof ApiPushSubscribeRoute
   ApiPushSubscriptionsRoute: typeof ApiPushSubscriptionsRouteWithChildren
@@ -533,11 +495,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/forgot-password': {
-      id: '/forgot-password'
-      path: '/forgot-password'
-      fullPath: '/forgot-password'
-      preLoaderRoute: typeof ForgotPasswordRouteImport
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/help': {
@@ -561,26 +523,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/terms': {
       id: '/terms'
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_protected/account': {
-      id: '/_protected/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof ProtectedAccountRouteImport
-      parentRoute: typeof ProtectedRoute
     }
     '/_protected/admin': {
       id: '/_protected/admin'
@@ -664,13 +612,6 @@ declare module '@tanstack/react-router' {
       path: '/api/users'
       fullPath: '/api/users'
       preLoaderRoute: typeof ApiUsersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/channels/$id': {
@@ -796,14 +737,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface ProtectedRouteChildren {
-  ProtectedAccountRoute: typeof ProtectedAccountRoute
   ProtectedAdminRoute: typeof ProtectedAdminRoute
   ProtectedReportsRoute: typeof ProtectedReportsRoute
   ProtectedRequestsRoute: typeof ProtectedRequestsRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
-  ProtectedAccountRoute: ProtectedAccountRoute,
   ProtectedAdminRoute: ProtectedAdminRoute,
   ProtectedReportsRoute: ProtectedReportsRoute,
   ProtectedRequestsRoute: ProtectedRequestsRoute,
@@ -917,11 +856,10 @@ const ApiPushSubscriptionsRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProtectedRoute: ProtectedRouteWithChildren,
-  ForgotPasswordRoute: ForgotPasswordRoute,
+  AccountRoute: AccountRoute,
   HelpRoute: HelpRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
-  ResetPasswordRoute: ResetPasswordRoute,
   TermsRoute: TermsRoute,
   ApiCountriesRoute: ApiCountriesRouteWithChildren,
   ApiCredentialsRoute: ApiCredentialsRouteWithChildren,
@@ -932,7 +870,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRequestsRoute: ApiRequestsRouteWithChildren,
   ApiScreenshotsRoute: ApiScreenshotsRouteWithChildren,
   ApiUsersRoute: ApiUsersRouteWithChildren,
-  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiChannelsIdRoute: ApiChannelsIdRouteWithChildren,
   ApiPushSubscribeRoute: ApiPushSubscribeRoute,
   ApiPushSubscriptionsRoute: ApiPushSubscriptionsRouteWithChildren,

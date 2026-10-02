@@ -1,7 +1,7 @@
 {
   "name": "wme-requests",
   "version": "1.0.0",
-  "description": "WME Requests — TanStack Start + Mantine UI on Cloudflare Workers, with D1 backend and a Tampermonkey userscript",
+  "description": "WME Requests \u2014 TanStack Start + Mantine UI on Cloudflare Workers, with D1 backend and a Tampermonkey userscript",
   "private": true,
   "type": "module",
   "imports": {
@@ -11,6 +11,7 @@
     "dev": "vite dev --port 3000",
     "generate-routes": "tsr generate",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "npm run build && vite preview",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
@@ -21,8 +22,6 @@
     "userscript:typecheck": "npm --prefix userscript run typecheck"
   },
   "dependencies": {
-    "@better-auth/core": "~1.6.25",
-    "@better-auth/passkey": "~1.6.25",
     "@mantine/core": "^9.5.0",
     "@mantine/form": "^9.5.0",
     "@mantine/hooks": "^9.5.0",
@@ -30,25 +29,18 @@
     "@mantine/notifications": "^9.5.0",
     "@posthog/react": "^1.11.0",
     "@pushforge/builder": "^2.0.5",
-    "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.3.3",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.18",
     "@tanstack/react-start": "^1.168.33",
-    "better-auth": "~1.6.25",
-    "better-auth-cloudflare": "^0.3.1",
-    "drizzle-orm": "^0.45.2",
     "flag-icons": "^7.5.0",
     "lucide-react": "^1.28.0",
     "posthog-node": "^5.52.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-qr-code": "^2.2.0",
     "worker-mailer": "^1.2.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@better-auth/cli": "^1.4.21",
     "@cloudflare/vite-plugin": "^1.48.0",
     "@tanstack/router-cli": "^1.132.0",
     "@types/node": "^22.20.1",

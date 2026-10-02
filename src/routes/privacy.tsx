@@ -56,13 +56,13 @@ function Privacy() {
               Dashboard accounts (editors, moderators, admins)
             </Title>
             <List spacing="xs">
-              <List.Item>Name and email address, provided when your account is created or invited.</List.Item>
-              <List.Item>A securely hashed password, if you sign in with email/password.</List.Item>
               <List.Item>
-                If you use "Sign in with Discord", your Discord account ID and the email address Discord provides us,
-                used only to link or authenticate your existing dashboard account.
+                You sign in with your WazeTools account (auth.wazetools.com), which holds your sign-in details
+                (password hash, passkeys, linked Discord account, two-factor settings) and has its own privacy page.
+                WME Requests receives your account ID, name and email address from it.
               </List.Item>
-              <List.Item>Session tokens (via cookies) that keep you signed in.</List.Item>
+              <List.Item>Which countries you've been given access to, and your RSS feed token.</List.Item>
+              <List.Item>A session cookie, shared across *.wazetools.com, that keeps you signed in.</List.Item>
               <List.Item>
                 If you enable browser push notifications, an opaque push subscription endpoint and encryption keys
                 issued by your browser — these identify a browser installation, not you personally.
@@ -199,10 +199,6 @@ function Privacy() {
               <List.Item>
                 <strong>Cloudflare R2</strong> — stores screenshots attached to requests.
               </List.Item>
-              <List.Item>
-                <strong>Cloudflare Turnstile</strong> — a privacy-preserving bot-verification challenge on the sign-in
-                and password-reset forms, used to block automated abuse. It does not track you across other sites.
-              </List.Item>
             </List>
             <Text>
               As our infrastructure provider, Cloudflare processes this data on our behalf under its own privacy and
@@ -224,10 +220,6 @@ function Privacy() {
                 <strong>Analytics (optional)</strong> — PostHog cookies/local storage, set only after you accept
                 analytics in the cookie banner. See § 4.
               </List.Item>
-              <List.Item>
-                <strong>Cloudflare Turnstile</strong> — may set a short-lived cookie while verifying you're not a bot
-                on the sign-in/password-reset forms.
-              </List.Item>
             </List>
             <Text>
               You can change your analytics choice at any time — clear your browser's local storage for this site to
@@ -241,17 +233,13 @@ function Privacy() {
             <Title order={2}>7. Security</Title>
             <List spacing="xs">
               <List.Item>All traffic is served over HTTPS via Cloudflare.</List.Item>
-              <List.Item>Passwords are hashed, never stored or logged in plain text.</List.Item>
+              <List.Item>Sign-in is handled by the WazeTools account service; WME Requests never sees your password.</List.Item>
               <List.Item>
                 Third-party integration credentials (bot tokens, service-account keys, SMTP/email credentials) are
                 encrypted at rest with a dedicated encryption key held only as a server-side secret, and are never
                 re-displayed after saving.
               </List.Item>
               <List.Item>Access to admin functions (Admin, Reports) requires an authenticated session and is scoped by role and by country/region.</List.Item>
-              <List.Item>
-                Cloudflare Turnstile helps prevent automated credential-stuffing and abuse of the sign-in and
-                password-reset forms.
-              </List.Item>
             </List>
             <Text>
               No system is perfectly secure, but we design the Service to minimize what personal data it holds in the

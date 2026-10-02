@@ -1,11 +1,12 @@
-import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { ActionIcon, Anchor, Burger, Button, Container, Divider, Drawer, Group, Menu, Stack, Text, Title } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { usePostHog } from '@posthog/react'
 import { useEffect } from 'react'
 import { CircleUserRound, LogIn, LogOut, Map, UserCog } from 'lucide-react'
-import { authClient } from '@/lib/auth-client'
+import { accountLink, useSession } from '@/lib/session'
 
+// `authOnly` links need access to this app, not just a signed-in WazeTools account.
 const NAV_LINKS = [
   { to: '/', label: 'Home', authOnly: false },
   { to: '/requests', label: 'Requests', authOnly: true },
@@ -16,11 +17,12 @@ const NAV_LINKS = [
 
 export default function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const navigate = useNavigate()
   const posthog = usePostHog()
-  const { data: session } = authClient.useSession()
+  const { data } = useSession()
+  const session = data?.session
+  const authUrl = data?.authUrl ?? ''
   const [drawerOpened, { toggle: toggleDrawer, close: closeDrawer }] = useDisclosure(false)
-  const visibleLinks = NAV_LINKS.filter((link) => !link.authOnly || session)
+  const visibleLinks = NAV_LINKS.filter((link) => !link.authOnly || session?.access)
 
   useEffect(() => {
     if (!session?.user.id) return
@@ -30,12 +32,13 @@ export default function AppHeader() {
     })
   }, [posthog, session?.user.email, session?.user.id, session?.user.name])
 
-  async function handleSignOut() {
-    await authClient.signOut()
+  // Signing out happens on the account service (it clears the shared cookie for every
+  // WazeTools app), which then sends the browser back to our home page.
+  function handleSignOut() {
     posthog.capture('user_signed_out')
     posthog.reset()
     closeDrawer()
-    navigate({ to: '/login' })
+    window.location.assign(accountLink(authUrl, '/logout', `${data?.appUrl ?? window.location.origin}/`))
   }
 
   return (
@@ -60,7 +63,7 @@ export default function AppHeader() {
             <Menu position="bottom-end" width={220} withinPortal>
               <Menu.Target>
                 <ActionIcon
-                  variant={pathname === '/account' ? 'filled' : 'subtle'}
+                  variant="subtle"
                   size="lg"
                   radius="xl"
                   aria-label="Profile menu"
@@ -78,8 +81,8 @@ export default function AppHeader() {
                   </Text>
                 </Menu.Label>
                 <Menu.Divider />
-                <Menu.Item component={Link} to="/account" leftSection={<UserCog size={14} />}>
-                  Account
+                <Menu.Item component="a" href={accountLink(authUrl, '/account')} leftSection={<UserCog size={14} />}>
+                  WazeTools account
                 </Menu.Item>
                 <Menu.Item leftSection={<LogOut size={14} />} onClick={handleSignOut}>
                   Sign out
@@ -122,15 +125,15 @@ export default function AppHeader() {
           {session ? (
             <>
               <Button
-                component={Link}
-                to="/account"
-                variant={pathname === '/account' ? 'filled' : 'subtle'}
+                component="a"
+                href={accountLink(authUrl, '/account')}
+                variant="subtle"
                 leftSection={<UserCog size={14} />}
                 fullWidth
                 justify="flex-start"
                 onClick={closeDrawer}
               >
-                Account
+                WazeTools account
               </Button>
               <Button variant="default" leftSection={<LogOut size={14} />} fullWidth justify="flex-start" onClick={handleSignOut}>
                 Sign out

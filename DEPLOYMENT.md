@@ -74,6 +74,7 @@ This applies everything under [`migrations/`](migrations/):
 | `0022_passkey.sql` | `passkey` — WebAuthn credentials for **Sign in with passkey** (managed from the Account page) |
 | `0023_two_factor.sql` | `user.twoFactorEnabled`, `twoFactor` and `securityKey` — two-factor authentication (email codes, authenticator app, security keys, backup codes) |
 | `0024_security_events.sql` | `security_events` — per-user security log (sign-ins, failed sign-ins, sign-in method and 2FA changes) shown on the Account page |
+| `0025_central_auth.sql` | `user_access` (who may use this app, `is_global`, `feed_token`), copied from `user` — sign-in moved to the WazeTools account service, and Better Auth's tables (0002, 0022–0024) are no longer used |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -89,123 +90,43 @@ You'll re-run `db:migrate:remote` any time you pull a future update that adds a 
 
 Leave this as-is unless you're doing something unusual — it doesn't need to include your own dashboard's domain (same-origin requests aren't subject to CORS in the first place).
 
-## 6 — Configure the auth secret and URL
+## 6 — Sign-in: the WazeTools account service
 
-```bash
-# Local development — appended to .dev.vars (already gitignored)
-echo "BETTER_AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" >> .dev.vars
+Accounts live in the WazeTools account service ([wmeAuth](../wmeAuth), https://auth.wazetools.com),
+shared with WME Sync: password, passkeys, Discord, two-factor, Turnstile, auth emails and the
+security log are all there. Deploy it first (its DEPLOYMENT.md). This app only decides who gets
+in (`user_access`) and which countries they see (`user_countries`).
 
-# Production — stored as an encrypted Worker secret, not a plain var
-wrangler secret put BETTER_AUTH_SECRET
-```
+This Worker reaches the account service over a **service binding** named `AUTH` (`services` in
+`wrangler.jsonc`, bound to the Worker `wmeauth`): sessions are checked with
+`AUTH.fetch(".../api/auth/get-session")`, and adding users / sending reset links are RPC calls.
+Worker-to-worker, so there's no shared secret.
 
-Also set `vars.BETTER_AUTH_URL` in `wrangler.jsonc` to your deployment's real origin (e.g.
-`https://your-project.your-subdomain.workers.dev`, or a custom domain). It's used to build the
-absolute links in invite and password-reset emails — without it those links would be bare paths
-that don't work outside the app. `.dev.vars` already overrides it to `http://localhost:3000` for
-local dev.
+1. In `wrangler.jsonc`, `vars.APP_URL` is this app's origin and `vars.AUTH_URL` the account
+   service's. For local dev, add `APP_URL=http://localhost:3000` and
+   `AUTH_URL=http://localhost:3001` to `.dev.vars`.
+2. This app's origin must be in wmeAuth's `APP_ORIGINS`, or it won't redirect back here after
+   sign-in.
+3. Both must be on the same parent domain: the session cookie is set for `.wazetools.com`.
 
-Passkeys are bound to this URL's hostname (their WebAuthn relying-party ID), so pick the
-domain you'll keep: moving to a different domain later leaves existing passkeys unusable, and
-users would have to add new ones from the Account page.
+### Moving an existing deployment over
 
-## 7 — Configure Cloudflare Email Sending for system emails
+Existing users keep their accounts: wmeAuth's `scripts/import-users.mjs` copies this database's
+users (same ids, password hashes, Discord links and re-encrypted 2FA) into the account service,
+and migration `0025` gives each of them exactly the access they had. Passkeys and security keys
+can't move (they're bound to this hostname), so those users see a one-time "add your passkey
+again" banner on their WazeTools account page. The order matters — see wmeAuth's DEPLOYMENT.md.
 
-This is only for the app's own transactional email — user invites, password resets (see
-step 12) and two-factor sign-in codes. It's separate from the `email` notification platform,
-which is BYOK and configured per user in the Credentials Manager (step 9) instead. It goes
-through the Worker's `EMAIL` binding, so there's no API token to manage.
+## 7 — (removed) Email Sending
 
-1. Onboard the domain you'll send from (a subdomain like `notify.yourdomain.com` keeps its
-   reputation separate from your main domain). It must be a zone on the same Cloudflare account:
+Auth emails (invites, password resets, 2FA codes, security alerts) are sent by the account
+service now, so this app has no `EMAIL` binding. Notification-channel emails still go through
+the BYOK credentials from step 9.
 
-   ```bash
-   npx wrangler email sending enable notify.yourdomain.com
-   npx wrangler email sending list   # should show it as enabled
-   ```
+## 8 — (removed) Discord sign-in
 
-2. Set the from-address var in `wrangler.jsonc` (any address on that domain):
-
-   ```jsonc
-   "vars": {
-     "AUTH_EMAIL_FROM": "requests@notify.yourdomain.com"
-   }
-   ```
-
-   The `send_email` binding named `EMAIL` is already declared in `wrangler.jsonc`. It's marked
-   `"remote": true`, so `npm run dev` sends real emails too — test with addresses you control.
-
-3. Regenerate the Worker's env types after touching `wrangler.jsonc`:
-
-   ```bash
-   npm run cf-typegen
-   ```
-
-It also sends users a "Security alert" email whenever their password, passkeys, security keys,
-two-factor settings or linked accounts change (sign-ins are logged on the Account page but not
-emailed).
-
-Without this, inviting users by email, "Forgot password?", two-factor email codes and security
-alerts won't work
-(you can still create accounts directly via `create-admin-user.mjs`/**Admin**).
-
-## 8 — Configure Discord sign-in (optional)
-
-Lets users sign in with **Sign in with Discord** on the login page, in addition to
-email/password. It never creates a brand-new account on its own — sign-up is still admin-only
-(see step 12) — but if the Discord account's email matches an existing user, that user gets
-signed in and the Discord account is linked to them automatically, no separate "link your
-account" step required. Skip this step if you don't need it; the button still renders but fails
-until configured.
-
-1. In the [Discord Developer Portal](https://discord.com/developers/applications), create a new
-   application, then under **OAuth2 → General** add a redirect:
-
-   ```
-   https://your-project.your-subdomain.workers.dev/api/auth/callback/discord
-   ```
-
-   (or your custom domain, matching step 6's `BETTER_AUTH_URL` — for local dev, also add
-   `http://localhost:3000/api/auth/callback/discord`).
-
-2. Set the Client ID as a plain var in `wrangler.jsonc` (it's not secret — it's embedded in the
-   browser authorize-URL anyway):
-
-   ```jsonc
-   "vars": {
-     "DISCORD_CLIENT_ID": "your-client-id"
-   }
-   ```
-
-3. Set the Client Secret as a secret (never in `wrangler.jsonc`):
-
-   ```bash
-   # Local development — appended to .dev.vars (already gitignored)
-   echo "DISCORD_CLIENT_SECRET=your-real-secret" >> .dev.vars
-
-   # Production
-   wrangler secret put DISCORD_CLIENT_SECRET
-   ```
-
-4. Regenerate the Worker's env types after touching `wrangler.jsonc` or `.dev.vars`:
-
-   ```bash
-   npm run cf-typegen
-   ```
-
-### Adding another OAuth provider later
-
-The login and Account pages both render from the list in
-[`src/lib/social-providers.ts`](src/lib/social-providers.ts). To add a provider (e.g. Google or GitHub):
-
-1. Add an entry to `SOCIAL_PROVIDERS` (`id` must match Better Auth's provider id).
-2. In [`src/lib/auth.ts`](src/lib/auth.ts), add its config to `socialProviders` (with
-   `disableImplicitSignUp: true`, like Discord) and its id to `account.accountLinking.trustedProviders`.
-3. Register the `/api/auth/callback/<id>` redirect with the provider, set its client ID/secret as
-   above, and run `npm run cf-typegen`.
-
-Signed-in users can then link it from **Account → Connected accounts**, even if its email differs
-from theirs.
+"Sign in with Discord" is configured on the account service. (Discord *notification channels*
+are unaffected — they use webhooks.)
 
 ## 9 — Configure the Credentials Manager (optional)
 
@@ -296,78 +217,39 @@ a region and request type). Skip this step if you don't need browser push notifi
    npm run db:migrate:remote
    ```
 
-## 11 — Configure Cloudflare Turnstile (optional but recommended)
+## 11 — (removed) Cloudflare Turnstile
 
-Guards the sign-in and forgot-password forms against bots/credential-stuffing with a free
-Cloudflare Turnstile widget (via Better Auth's built-in `captcha` plugin — see
-`src/lib/auth.ts`). The button/form still work without it — the widget only renders, and the
-server only requires a token, once `VITE_PUBLIC_TURNSTILE_SITE_KEY` is set — but running
-public login/reset forms without it isn't recommended.
+The sign-in forms, and their Turnstile widget, are on the account service.
 
-1. Create a widget for your domain (add `--domain localhost` too if you want it in local
-   dev) with either the [Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile)
-   or Wrangler:
+## 12 — Give the first admin access
 
-   ```bash
-   npx wrangler turnstile widget create "Your App Login" \
-     --domain your-project.your-subdomain.workers.dev --domain localhost --mode managed
-   ```
-
-   This prints a `sitekey` (public) and a `secret` (private).
-
-2. Set the site key as a client-bundled var in `.env` (not `wrangler.jsonc` — it's baked in
-   at `vite build` time, same as `VITE_PUBLIC_POSTHOG_PROJECT_TOKEN`):
-
-   ```bash
-   echo "VITE_PUBLIC_TURNSTILE_SITE_KEY=your-site-key" >> .env
-   ```
-
-3. Set the secret key as a Worker secret (never in `wrangler.jsonc` or `.env`):
-
-   ```bash
-   # Local development — appended to .dev.vars (already gitignored)
-   echo "TURNSTILE_SECRET_KEY=your-real-secret" >> .dev.vars
-
-   # Production
-   wrangler secret put TURNSTILE_SECRET_KEY
-   ```
-
-4. Regenerate the Worker's env types after touching `.dev.vars`:
-
-   ```bash
-   npm run cf-typegen
-   ```
-
-## 12 — Create your first admin account
-
-There's no public sign-up page — sign-up is disabled at the API level. The very first account has
-to be provisioned directly in D1:
+Sign up (or sign in) on the account service and open this app once — you'll see "Ask an admin
+for access", which also creates your local user row. Then grant yourself global access:
 
 ```bash
-node scripts/create-admin-user.mjs you@example.com 'your-password' "Your Name"
+wrangler d1 execute wme-requests --remote --command "INSERT INTO user_access (user_id, is_global) SELECT id, 1 FROM \"user\" WHERE email = 'you@example.com'"
 ```
 
-This prints two `INSERT` statements. Run them against both databases:
-
-```bash
-wrangler d1 execute wme-requests --local  --command "$(node scripts/create-admin-user.mjs you@example.com 'your-password' "Your Name")"
-wrangler d1 execute wme-requests --remote --command "$(node scripts/create-admin-user.mjs you@example.com 'your-password' "Your Name")"
-```
-
-Every account after that can be managed from **/admin → Users** in the dashboard once you're
-signed in: **Create** sets a password directly, **Invite** emails a link (via Cloudflare Email Sending, see step 7)
-letting the person set their own password, and **Reset Password** re-sends that same link to an
-existing user. Invite/reset emails require step 7's email config and step 6's `BETTER_AUTH_URL`.
+Everyone after that is managed from **/admin → Users** by a global user: **Add user** finds the
+WazeTools account by email (or has the account service create one and email a link to set a
+password), **Edit Access** changes their countries, **Reset Password** emails them a reset
+link, and **Remove** takes away their access (their WazeTools account stays).
 
 ## 13 — Try it locally
 
 ```bash
+(cd ../wmeAuth && npm run dev)   # the account service, on :3001
 npm run dev
 ```
 
-Open `http://localhost:3000` — the dashboard and `/requests` are viewable without signing in
-(read-only), but `/admin` and `/reports` redirect to `/login`. Sign in with the account from
-step 12, then set
+**Careful:** the D1 binding has `"remote": true`, so `npm run dev` reads and writes the
+**production** database. To try changes against a local database instead, build and run the
+Worker with a copy of `dist/server/wrangler.json` that drops `"remote": true`:
+`npx wrangler dev -c <that copy> --persist-to .wrangler/state`.
+
+Open `http://localhost:3000` — `/requests`, `/admin` and `/reports` hand off to the account
+service's sign-in page on :3001 (cookies ignore the port, so the session comes back). Sign in
+with the account from step 12, then set
 up at least one country and notification channel from the `/admin` page before moving on (see
 [README § Notification Channels](README.md#notification-channels) for the channel body fields
 and `custom_prefix` variables).
@@ -411,5 +293,11 @@ Since `wrangler d1 migrations apply` only runs migrations it hasn't seen before,
 ## Troubleshooting
 
 - **Userscript panel never appears / actions silently do nothing**: open the browser console and look for lines prefixed `[WME Requests]` — the script logs diagnostic info whenever it can't find something it expects from WME's own SDK (selection getter, country lookup, user info, etc.), rather than failing silently.
+- **Signed in, but every page says "Ask an admin for access"**: that WazeTools account has no
+  `user_access` row. A global user adds it from **Admin → Users → Add user** (by email).
+- **Signing in loops back to the account service, or the API answers 401**: the session check
+  over the `AUTH` binding failed. Look for "get-session over AUTH binding failed" in the Worker
+  logs, check the `wmeauth` Worker is deployed, and that this app is on a `*.wazetools.com`
+  origin (the cookie isn't sent anywhere else).
 - **"Internal server error" on submit**: almost always a pending D1 migration — re-run `npm run db:migrate:remote`.
 - **CORS errors in the browser console** (only relevant if you're calling the public endpoint from somewhere other than the userscript): check `ALLOWED_ORIGINS` in `wrangler.jsonc` includes the exact origin making the request, then redeploy — this var only takes effect on the next `wrangler deploy`.

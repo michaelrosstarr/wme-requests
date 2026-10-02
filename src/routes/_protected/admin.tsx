@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Alert, Badge, Button, Card, Center, Container, Group, Loader, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { Globe, Info, KeyRound, Mail, MapPin, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
+import { Globe, Info, KeyRound, MapPin, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
 import {
   useChannels,
   useCountries,
@@ -12,6 +12,7 @@ import {
   useDeleteCredential,
   useMe,
   useRegions,
+  useRemoveUserAccess,
   useResetUserPassword,
   useTestChannel,
   useUsers,
@@ -22,7 +23,6 @@ import type { AdminUser, Channel, Country, Credential } from '@/lib/types'
 import CountryFormModal from '@/components/CountryFormModal'
 import ChannelFormModal from '@/components/ChannelFormModal'
 import RegionsModal from '@/components/RegionsModal'
-import UserFormModal from '@/components/UserFormModal'
 import InviteUserModal from '@/components/InviteUserModal'
 import UserAccessModal from '@/components/UserAccessModal'
 import CredentialsModal from '@/components/CredentialsModal'
@@ -68,13 +68,13 @@ function Admin() {
 
   const usersQuery = useUsers()
   const users = usersQuery.data ?? []
-  const [userModal, setUserModal] = useState(false)
   const [inviteModal, setInviteModal] = useState(false)
   const [accessModal, setAccessModal] = useState<{ opened: boolean; user: AdminUser | null }>({
     opened: false,
     user: null,
   })
   const resetUserPassword = useResetUserPassword()
+  const removeUserAccess = useRemoveUserAccess()
 
   const credentialsQuery = useCredentials()
   const credentials = credentialsQuery.data ?? []
@@ -151,6 +151,20 @@ function Admin() {
       onSuccess: () => notifications.show({ color: 'green', message: 'Test notification sent.' }),
       onError: (e) =>
         notifications.show({ color: 'red', title: 'Test notification failed', message: (e as Error).message }),
+    })
+  }
+
+  async function handleRemoveAccess(u: AdminUser) {
+    const ok = await confirmDialog({
+      title: 'Remove access',
+      message: `${u.email} will no longer be able to use WME Requests, and their push subscriptions are deleted. Their WazeTools account isn't affected.`,
+      confirmLabel: 'Remove access',
+      danger: true,
+    })
+    if (!ok) return
+    removeUserAccess.mutate(u.id, {
+      onSuccess: () => notifications.show({ color: 'green', message: `Removed access for ${u.email}.` }),
+      onError: (e) => notifications.show({ color: 'red', title: 'Could not remove access', message: (e as Error).message }),
     })
   }
 
@@ -465,11 +479,8 @@ function Admin() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Users</Title>
             <Group gap="xs">
-              <Button size="xs" variant="light" leftSection={<Mail size={14} />} onClick={() => setInviteModal(true)}>
-                Invite
-              </Button>
-              <Button size="xs" leftSection={<UserPlus size={14} />} onClick={() => setUserModal(true)}>
-                Create
+              <Button size="xs" leftSection={<UserPlus size={14} />} onClick={() => setInviteModal(true)}>
+                Add user
               </Button>
             </Group>
           </Group>
@@ -521,6 +532,18 @@ function Admin() {
                     >
                       Reset Password
                     </Button>
+                    {u.id !== me?.userId && (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="red"
+                        leftSection={<Trash2 size={14} />}
+                        loading={removeUserAccess.isPending && removeUserAccess.variables === u.id}
+                        onClick={() => handleRemoveAccess(u)}
+                      >
+                        Remove
+                      </Button>
+                    )}
                   </Group>
                 </Group>
               </Card>
@@ -553,7 +576,6 @@ function Admin() {
           onClose={() => setChannelModal({ opened: false, channel: null })}
         />
       )}
-      <UserFormModal opened={userModal} onClose={() => setUserModal(false)} />
       <InviteUserModal opened={inviteModal} onClose={() => setInviteModal(false)} />
       <UserAccessModal
         opened={accessModal.opened}

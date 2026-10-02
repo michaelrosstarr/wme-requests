@@ -6,9 +6,14 @@ export interface UserAccess {
   countryIds: number[]
 }
 
-export async function getUserAccess(userId: string): Promise<UserAccess> {
-  const row = await dbFirst<{ is_global: number }>(`SELECT is_global FROM "user" WHERE id = ?`, [userId])
-  const isGlobal = row?.is_global !== 0
+/**
+ * The user's access to this app, or `null` if they have none: any WazeTools account can sign in,
+ * but only users an admin has added (a `user_access` row) get in.
+ */
+export async function getUserAccess(userId: string): Promise<UserAccess | null> {
+  const row = await dbFirst<{ is_global: number }>(`SELECT is_global FROM user_access WHERE user_id = ?`, [userId])
+  if (!row) return null
+  const isGlobal = row.is_global === 1
   const countryIds = isGlobal
     ? []
     : (

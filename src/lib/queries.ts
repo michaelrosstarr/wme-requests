@@ -284,15 +284,6 @@ export interface UserAccessValues {
   countryIds: number[]
 }
 
-export function useCreateUser() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (vars: { name: string; email: string; password: string } & UserAccessValues) =>
-      apiFetch('/users', { method: 'POST', body: JSON.stringify(vars) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
-  })
-}
-
 export function useInviteUser() {
   const qc = useQueryClient()
   return useMutation({
@@ -305,6 +296,14 @@ export function useInviteUser() {
 export function useResetUserPassword() {
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/users/${id}/reset-password`, { method: 'POST' }),
+  })
+}
+
+export function useRemoveUserAccess() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/users/${id}/access`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   })
 }
 

@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { apiRoute } from '@/lib/http'
-import { updateUserAccess } from '@/lib/users'
+import { removeUserAccess, updateUserAccess } from '@/lib/users'
 
 export const Route = createFileRoute('/api/users/$id/access')({
   server: {
@@ -11,6 +11,7 @@ export const Route = createFileRoute('/api/users/$id/access')({
           params.id,
           (await request.json().catch(() => ({}))) as Parameters<typeof updateUserAccess>[2],
         ),
+      DELETE: ({ params, access }) => removeUserAccess(access!, params.id),
     }),
   },
 })

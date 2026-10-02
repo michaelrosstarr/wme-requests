@@ -1,6 +1,6 @@
 import { dbAll, dbFirst, dbRun } from './db'
 import { json, err } from './http'
-import { getAuth } from './auth'
+import { getCentralSession } from './central-auth'
 import { canAccessCountry, getUserAccess, type UserAccess } from './access'
 
 export interface Country {
@@ -16,9 +16,9 @@ export interface Country {
 // one endpoint needs to behave differently for each kind of caller.
 export async function getCountries(request: Request) {
   const rows = await dbAll<Country>('SELECT * FROM countries ORDER BY name ASC')
-  const session = await getAuth().api.getSession({ headers: request.headers })
-  if (!session) return json(rows)
-  const access = await getUserAccess(session.user.id)
+  const { user } = await getCentralSession(request.headers)
+  const access = user ? await getUserAccess(user.id) : null
+  if (!access) return json(rows)
   return json(access.isGlobal ? rows : rows.filter((c) => access.countryIds.includes(c.id)))
 }
 
