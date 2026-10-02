@@ -13,6 +13,7 @@ import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import appCss from '../styles.css?url'
 
+import { getSessionFn } from '../lib/get-session-fn'
 import AppHeader from '../components/AppHeader'
 import Footer from '../components/Footer'
 import CookieConsent from '../components/CookieConsent'
@@ -29,6 +30,12 @@ export const Route = createRootRoute({
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
     ],
   }),
+  // The session, fetched once while the first page is server-rendered, so the header (see
+  // useSession) is right on first paint instead of showing "Sign in" until the browser has asked.
+  // Not re-run on client navigations: useSession's query keeps it fresh from there. A failure
+  // here only means starting signed-out-looking, as before, not an error page.
+  loader: () => getSessionFn().catch(() => null),
+  shouldReload: false,
   shellComponent: RootDocument,
 })
 
