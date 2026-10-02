@@ -27,6 +27,10 @@ export interface AccountUser {
   hasPassword: boolean
   disabled: boolean
   createdAt: string
+  /** Self-reported WME editor level, 1–6; null if not set. Absent from wmeAuth before the editor profile. */
+  wmeLevel?: number | null
+  /** Where they edit (ISO 3166 codes); `subdivision: null` means the whole country. */
+  editingAreas?: { country: string; subdivision: string | null }[]
 }
 
 /** wmeAuth's RPC methods (see its src/server-entry.ts). Errors arrive as "<status>: <message>". */

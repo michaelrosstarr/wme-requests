@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import {
+  Anchor,
   Button,
   Card,
   Container,
@@ -14,6 +15,7 @@ import {
 import {
   ArrowRight,
   Bell,
+  Download,
   FileSpreadsheet,
   Gamepad2,
   Globe2,
@@ -107,6 +109,8 @@ const FEATURES = [
   },
 ]
 
+const USERSCRIPT_URL = 'https://greasyfork.org/en/scripts/589317-wme-requests'
+
 function Landing() {
   const countriesQuery = useCountries()
   const countries = countriesQuery.data ?? []
@@ -118,7 +122,11 @@ function Landing() {
           Downlock, imagery &amp; place update requests, tracked and delivered where you already work
         </Title>
         <Text size="lg" c="dimmed" maw={640}>
-          A shared queue for Waze Map Editor requests, submitted straight from WME via a userscript, and pushed out
+          A shared queue for Waze Map Editor requests, submitted straight from WME via a{' '}
+          <Anchor href={USERSCRIPT_URL} target="_blank" rel="noopener noreferrer" inherit>
+            userscript
+          </Anchor>
+          , and pushed out
           to Slack, Discord, Telegram, email, and more — scoped by country and region.
         </Text>
         <Group mt="sm">
@@ -127,6 +135,17 @@ function Landing() {
           </Button>
           <Button component={Link} to="/help" size="md" variant="default">
             Setup Guide
+          </Button>
+          <Button
+            component="a"
+            href={USERSCRIPT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="md"
+            variant="light"
+            leftSection={<Download size={16} />}
+          >
+            Install Userscript
           </Button>
         </Group>
       </Stack>
