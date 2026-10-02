@@ -4,7 +4,9 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 export const Route = createFileRoute('/privacy')({ component: Privacy })
 
 const CONTACT_EMAIL = 'wazer@wmekit.com'
-const EFFECTIVE_DATE = '22 September 2026'
+const EFFECTIVE_DATE = '2 October 2026'
+// The account-wide policy, which this one supplements.
+const MAIN_POLICY_URL = 'https://auth.wmekit.com/privacy'
 
 function Privacy() {
   return (
@@ -20,11 +22,21 @@ function Privacy() {
         <Text>
           WME Requests ("the Service", "we", "us") is a companion dashboard and browser userscript used by Waze Map
           Editors to submit and route lock/imagery/permissions requests. It is an independent, unofficial community
-          tool and is not affiliated with, endorsed by, or operated by Waze or Google. This policy explains what data
-          the Service processes, why, and who it's shared with. For questions, deletion requests, or anything related
-          to data protection (including GDPR requests), contact{' '}
+          tool and is not affiliated with, endorsed by, or operated by Waze or Google. For questions, deletion
+          requests, or anything related to data protection (including POPIA and GDPR requests), contact{' '}
           <Anchor href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</Anchor>.
         </Text>
+
+        <Card withBorder p="lg" radius="md" bg="var(--mantine-color-blue-light)">
+          <Text>
+            <b>This policy supplements the main WMEKit Privacy Policy.</b> You sign in to WME Requests with your WMEKit
+            account, and everything about that account (your sign-in methods, sessions, security log, the sign-in
+            cookies, your rights and how to use them, and how international transfers are handled) is covered by the{' '}
+            <Anchor href={MAIN_POLICY_URL}>WMEKit Privacy Policy</Anchor>. This page goes into detail about what WME
+            Requests itself collects and does: the requests you submit, notifications, and the data the app keeps
+            about your access. Where the two differ about WME Requests, this page applies.
+          </Text>
+        </Card>
 
         <Card withBorder p="lg" radius="md">
           <Stack gap="sm">
@@ -36,8 +48,9 @@ function Privacy() {
             </Text>
             <List spacing="xs">
               <List.Item>
-                Sign-in to the dashboard doesn't record your IP address or geographic location — this is explicitly
-                disabled in our authentication provider's configuration.
+                WME Requests itself doesn't record your IP address or location. Signing in happens on your WMEKit
+                account, which keeps a security log of sign-ins (including IP address) as described in the{' '}
+                <Anchor href={MAIN_POLICY_URL}>WMEKit Privacy Policy</Anchor>.
               </List.Item>
               <List.Item>
                 Submitting a request through the browser userscript doesn't require an account, and we don't collect
@@ -57,9 +70,9 @@ function Privacy() {
             </Title>
             <List spacing="xs">
               <List.Item>
-                You sign in with your WMEKit account (auth.wmekit.com), which holds your sign-in details
-                (password hash, passkeys, linked Discord account, two-factor settings) and has its own privacy page.
-                WME Requests receives your account ID, name and email address from it.
+                You sign in with your WMEKit account (auth.wmekit.com). Your sign-in details stay there (see the{' '}
+                <Anchor href={MAIN_POLICY_URL}>WMEKit Privacy Policy</Anchor>). WME Requests receives your account ID,
+                name, email address and profile picture from it, and keeps a copy of your ID, name and email.
               </List.Item>
               <List.Item>Which countries you've been given access to, and your RSS feed token.</List.Item>
               <List.Item>A session cookie, shared across *.wmekit.com, that keeps you signed in.</List.Item>
@@ -267,11 +280,14 @@ function Privacy() {
           <Stack gap="sm">
             <Title order={2}>9. Your rights</Title>
             <Text>
-              Depending on where you're located, you may have rights under data protection law (such as the GDPR) to
-              access, correct, export, or delete your personal data, or to object to or restrict certain processing.
-              To exercise any of these, or for any other privacy question, email{' '}
-              <Anchor href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</Anchor>. We'll respond as soon as we
-              reasonably can.
+              Your rights over your data in WME Requests are the same as for your WMEKit account: under POPIA, the GDPR
+              or other law that applies to you, you can access, correct, export or delete your personal data, or
+              object to or restrict certain processing. The{' '}
+              <Anchor href={MAIN_POLICY_URL}>WMEKit Privacy Policy</Anchor> explains these rights and how to complain
+              to a regulator. To use any of them for WME Requests data, email{' '}
+              <Anchor href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</Anchor>. We'll respond within 30 days.
+              Removing your access to WME Requests doesn't delete your WMEKit account, and deleting your WMEKit account
+              doesn't by itself remove your WME Requests data. Ask, and we'll remove both.
             </Text>
           </Stack>
         </Card>
@@ -280,8 +296,9 @@ function Privacy() {
           <Stack gap="sm">
             <Title order={2}>10. Changes to this policy</Title>
             <Text>
-              We may update this policy as the Service changes. Material changes will be reflected by updating the
-              effective date above.
+              We may update this policy as the Service changes. We'll update the effective date above, and if a change
+              significantly affects how we use your data, we'll tell you before it takes effect. WMEKit is run from
+              South Africa.
             </Text>
           </Stack>
         </Card>

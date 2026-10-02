@@ -4,7 +4,9 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 export const Route = createFileRoute('/terms')({ component: Terms })
 
 const CONTACT_EMAIL = 'wazer@wmekit.com'
-const EFFECTIVE_DATE = '22 September 2026'
+const EFFECTIVE_DATE = '2 October 2026'
+// The account-wide terms, which these supplement.
+const MAIN_TERMS_URL = 'https://auth.wmekit.com/terms'
 
 function Terms() {
   return (
@@ -23,6 +25,16 @@ function Terms() {
           endorsed by, or operated by Waze or Google. By using the Service, you agree to these terms. Questions can be
           sent to <Anchor href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</Anchor>.
         </Text>
+
+        <Card withBorder p="lg" radius="md" bg="var(--mantine-color-blue-light)">
+          <Text>
+            <b>These terms supplement the main WMEKit Terms of Service.</b> Your WMEKit account, which you use to sign
+            in here, is covered by the <Anchor href={MAIN_TERMS_URL}>WMEKit Terms of Service</Anchor>, including the
+            rules for keeping it secure, acceptable use, account closure, disclaimers and limits of liability. Those
+            apply to WME Requests too. The terms below add what's specific to WME Requests: submitting requests,
+            notification channels, and dashboard access. If the two conflict about WME Requests, these terms apply.
+          </Text>
+        </Card>
 
         <Card withBorder p="lg" radius="md">
           <Stack gap="sm">
@@ -48,7 +60,11 @@ function Terms() {
                 You sign in with a WMEKit account (auth.wmekit.com). Access to the dashboard is granted by an
                 existing admin — having an account alone doesn't give access.
               </List.Item>
-              <List.Item>You're responsible for keeping your login credentials confidential and for all activity under your account.</List.Item>
+              <List.Item>
+                Keeping your WMEKit account secure is covered by the{' '}
+                <Anchor href={MAIN_TERMS_URL}>WMEKit Terms of Service</Anchor>. You're responsible for all activity
+                in WME Requests under your account.
+              </List.Item>
               <List.Item>
                 If you configure a notification channel with your own third-party credentials (a webhook URL, bot
                 token, service-account key, or email credential), you're responsible for that credential's validity,
@@ -144,7 +160,18 @@ function Terms() {
 
         <Card withBorder p="lg" radius="md">
           <Stack gap="sm">
-            <Title order={2}>9. Contact</Title>
+            <Title order={2}>9. Governing law</Title>
+            <Text>
+              These terms are governed by the laws of the Republic of South Africa. Any dispute about them or the
+              Service will be heard by the courts of South Africa, unless the law where you live gives you the right
+              to bring it in your local courts.
+            </Text>
+          </Stack>
+        </Card>
+
+        <Card withBorder p="lg" radius="md">
+          <Stack gap="sm">
+            <Title order={2}>10. Contact</Title>
             <Text>
               For questions about these terms, email <Anchor href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</Anchor>
               .
