@@ -41,6 +41,8 @@ interface FabVisibility {
   downlock: boolean;
   uplock: boolean;
   imagery: boolean;
+  accept_pur: boolean;
+  decline_pur: boolean;
 }
 
 type EntityItem = Segment | Venue | MapComment;
@@ -100,6 +102,9 @@ if (apiBase.replace(/\/+$/, '') === LEGACY_API_BASE) {
 let fabStyle = GM_getValue<FabStyle>('fabStyle', 'full');
 // Per-button show/hide for the floating action buttons — see applyFabVisibility().
 let fabVisible: FabVisibility = loadFabVisible();
+// Kind of the current selection (null when nothing's selected) — decides which floating
+// buttons applyFabVisibility() shows, via FAB_KIND_TYPES.
+let fabKind: EntityKind | null = null;
 let countries: ApiCountry[] = [];
 // Regions (states/provinces) of whichever country is currently selected — refetched
 // whenever that changes. Optional: a country with none configured just has an empty list.
@@ -158,10 +163,15 @@ function init(): void {
   log('Ready.');
 }
 
+// A selected segment's country/region comes from its own address, which panning can't
+// change — only the view-based (top country/state) fallback needs re-running on a move.
 function onMapMoveEnd(): void {
-  debugLog('onMapMoveEnd: fired, re-running auto country/region detection.');
-  const segments = getSelectedSegments();
-  applyAutoCountry(segments[0]);
+  if (getSelectedSegments().length) {
+    debugLog('onMapMoveEnd: segment selected, keeping its address-based country/region.');
+    return;
+  }
+  debugLog('onMapMoveEnd: fired, re-running view-based country/region detection.');
+  applyAutoCountry(null);
 }
 
 function debounce<Args extends unknown[]>(fn: (...args: Args) => void, wait: number): (...args: Args) => void {
@@ -260,7 +270,16 @@ function injectStyles(): void {
     #${PANEL_ID} .wmereq-status.info   { background: #e3f2fd; color: #1565c0; }
     #${PANEL_ID} .wmereq-hint { font-size: 11px; color: #888; margin-top: -4px; margin-bottom: 8px; }
     #${PANEL_ID} .wmereq-lock-info { font-size: 12px; color: #555; margin-bottom: 8px; padding: 4px 8px; background:#fffde7; border-radius:4px; }
-    #${PANEL_ID} .wmereq-quick-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    #${PANEL_ID} .wmereq-optional { font-weight: 400; color: #888; }
+    #${PANEL_ID} .wmereq-btn-block { width: 100%; margin: 0 0 8px; }
+    #${PANEL_ID} .wmereq-submit-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    #${PANEL_ID} .wmereq-submit-row .wmereq-btn { flex: 1 1 auto; margin: 0; }
+    #${PANEL_ID} .wmereq-settings summary { font-weight: 600; color: #333; cursor: pointer; user-select: none; }
+    #${PANEL_ID} .wmereq-settings[open] summary { margin-bottom: 8px; }
+    #${PANEL_ID} .wmereq-checkbox { display: flex; align-items: center; gap: 6px; font-weight: 400; margin-bottom: 4px; }
+    #${PANEL_ID} .wmereq-checkbox input { width: auto; margin: 0; }
+    #${PANEL_ID} .wmereq-settings-actions { display: flex; gap: 6px; margin-top: 8px; }
+    #${PANEL_ID} .wmereq-settings-actions .wmereq-btn { margin: 0; }
     .wmereq-btn-sm { padding: 4px 10px; font-size: 11px; margin-right: 0; }
     /* Not scoped to #${PANEL_ID} — injected directly into WME's own native place
        (venue) edit panel, which lives outside our panel's DOM subtree entirely. */
@@ -296,6 +315,8 @@ function injectStyles(): void {
     }
     #wmereq-reason-overlay .wmereq-chip:hover { background: #eee; }
     #wmereq-reason-overlay .wmereq-chip.active { background: #0a8cff; border-color: #0a8cff; color: #fff; }
+    #wmereq-reason-overlay .wmereq-btn-screenshot { width: 100%; box-sizing: border-box; margin: 12px 0 0; }
+    #wmereq-reason-overlay .wmereq-reason-error { font-size: 11px; color: #c62828; margin-top: 6px; }
     #wmereq-floating-actions {
       position: fixed; top: 70px; left: 10px; z-index: 1000;
       display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
@@ -318,6 +339,8 @@ function injectStyles(): void {
     #wmereq-floating-actions .wmereq-fab-downlock { background: #e53935; }
     #wmereq-floating-actions .wmereq-fab-uplock   { background: #9b59b6; }
     #wmereq-floating-actions .wmereq-fab-imagery  { background: #0a8cff; }
+    #wmereq-floating-actions .wmereq-fab-accept-pur  { background: #2ecc71; }
+    #wmereq-floating-actions .wmereq-fab-decline-pur { background: #f39c12; }
     /* Short text abbreviation (DL/UL/IMG), not an icon glyph — shown alongside the label in
        compact mode, and alone (in place of the label) in icon-only mode. */
     #wmereq-floating-actions .wmereq-fab-icon { display: none; font-size: 11px; font-weight: 700; letter-spacing: .3px; line-height: 1; }
@@ -386,14 +409,10 @@ function createFloatingActions(): void {
   wrap.innerHTML = `
     <div class="wmereq-fab-handle" title="Drag to move">⠿ ⠿ ⠿</div>
     <div id="wmereq-fab-status" class="wmereq-fab-status" style="display:none"></div>
-    <button class="wmereq-fab wmereq-fab-downlock" id="wmereq-fab-downlock" title="Submit a downlock request for the selected segment or place"><span class="wmereq-fab-icon">DL</span><span class="wmereq-fab-label">Downlock</span></button>
-    <button class="wmereq-fab wmereq-fab-uplock" id="wmereq-fab-uplock" title="Submit an uplock request for the selected segment or place"><span class="wmereq-fab-icon">UL</span><span class="wmereq-fab-label">Uplock</span></button>
-    <button class="wmereq-fab wmereq-fab-imagery" id="wmereq-fab-imagery" title="Submit an imagery request for the selected segment or map note"><span class="wmereq-fab-icon">IMG</span><span class="wmereq-fab-label">Imagery</span></button>
+    ${FAB_TYPES.map((type) => `<button class="wmereq-fab wmereq-fab-${typeSlug(type)}" id="wmereq-fab-${typeSlug(type)}" title="Submit a ${describeType(type)} request for the selection"><span class="wmereq-fab-icon">${TYPE_ABBR[type]}</span><span class="wmereq-fab-label">${describeType(type)}</span></button>`).join('\n    ')}
   `;
   document.body.appendChild(wrap);
-  on('wmereq-fab-downlock', 'click', () => quickSubmit('downlock'));
-  on('wmereq-fab-uplock', 'click', () => quickSubmit('uplock'));
-  on('wmereq-fab-imagery', 'click', () => quickSubmit('imagery'));
+  for (const type of FAB_TYPES) on(`wmereq-fab-${typeSlug(type)}`, 'click', () => quickSubmit(type));
   makeDraggable(wrap, wrap.querySelector<HTMLElement>('.wmereq-fab-handle')!, 'wmereq-fab-pos');
   applyFabStyle();
   applyFabVisibility();
@@ -405,13 +424,29 @@ function applyFabStyle(): void {
     wrap.classList.toggle('wmereq-fab-compact', fabStyle === 'compact');
     wrap.classList.toggle('wmereq-fab-icon-only', fabStyle === 'icon');
   }
-  // The same Floating Buttons style setting also drives the quick-action buttons in our own
-  // panel and the ones injected into WME's native segment/place panels — refresh their
-  // labels to match whenever it changes.
+  // The same Floating Buttons style setting also drives the quick-action buttons injected
+  // into WME's native segment/place panels — refresh their labels to match whenever it changes.
   refreshQuickActionLabels();
 }
 
 const TYPE_ABBR: Record<RequestType, string> = { downlock: 'DL', uplock: 'UL', imagery: 'IMG', accept_pur: 'ACC', decline_pur: 'DEC' };
+const TYPE_LABELS: Record<RequestType, string> = {
+  downlock: 'Downlock', uplock: 'Uplock', imagery: 'Imagery', accept_pur: 'Accept PUR', decline_pur: 'Decline PUR',
+};
+const KIND_LABELS: Record<EntityKind, string> = { segment: 'segment', mapComment: 'map note', venue: 'place' };
+
+// `accept_pur` → `accept-pur`, the form used in element ids and CSS classes.
+function typeSlug(type: RequestType): string {
+  return type.replace('_', '-');
+}
+
+// WME stores a 0-based lock rank; everything in this file uses the 1-based display level.
+function lockLevelOf(item: { lockRank?: number | null }): number | null {
+  return item.lockRank != null ? item.lockRank + 1 : null;
+}
+
+const LOCK_LEVEL_OPTIONS_HTML =
+  '<option value="">— select —</option>' + [1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}">${n}</option>`).join('');
 
 // Label text for a quick-action button (panel rows and native-injected alike), following
 // the same fabStyle setting as the floating map buttons: full name, abbreviation + name, or
@@ -432,17 +467,20 @@ function refreshQuickActionLabels(): void {
   });
 }
 
-// Markup for one quick-action button, shared by both panel rows (buildPanelHTML) — the
-// native-injected ones (injectNativeQuickActions) build the same shape via the DOM directly.
-function quickActionButtonHTML(type: RequestType, idPrefix: string): string {
-  const id = `${idPrefix}-${type.replace('_', '-')}`;
-  return `<button type="button" class="wmereq-btn wmereq-btn-sm wmereq-btn-${type.replace('_', '-')}" id="${id}" title="Quick-submit a ${describeType(type)} request" data-wmereq-qa-type="${type}" style="display:none">${escHtml(quickActionLabel(type))}</button>`;
-}
+// Same order as QUICK_ACTION_TYPES (spelled out since that's declared further down).
+const FAB_TYPES: RequestType[] = ['downlock', 'uplock', 'imagery', 'accept_pur', 'decline_pur'];
 
-const FAB_TYPES: RequestType[] = ['downlock', 'uplock', 'imagery'];
+// Which floating buttons fit each selection kind. With nothing selected only Imagery shows,
+// as a fallback (clicking it still prompts to select something first).
+const FAB_KIND_TYPES: Record<EntityKind | 'none', RequestType[]> = {
+  venue: ['uplock', 'downlock', 'accept_pur', 'decline_pur'],
+  segment: ['uplock', 'downlock'],
+  mapComment: ['imagery'],
+  none: ['imagery'],
+};
 
 function loadFabVisible(): FabVisibility {
-  const defaults: FabVisibility = { downlock: true, uplock: true, imagery: true };
+  const defaults: FabVisibility = { downlock: true, uplock: true, imagery: true, accept_pur: true, decline_pur: true };
   const saved = GM_getValue<string | null>('wmereq-fab-visible', null);
   if (!saved) return defaults;
   try {
@@ -457,8 +495,9 @@ function applyFabVisibility(): void {
   const wrap = byId('wmereq-floating-actions');
   if (!wrap) return;
   for (const type of FAB_TYPES) {
-    const btn = byId(`wmereq-fab-${type.replace('_', '-')}`);
-    if (btn) btn.style.display = fabVisible[type as keyof FabVisibility] === false ? 'none' : '';
+    const btn = byId(`wmereq-fab-${typeSlug(type)}`);
+    const show = FAB_KIND_TYPES[fabKind ?? 'none'].includes(type) && fabVisible[type as keyof FabVisibility] !== false;
+    if (btn) btn.style.display = show ? '' : 'none';
   }
 }
 
@@ -486,38 +525,51 @@ function makeDraggable(container: HTMLElement, handle: HTMLElement, storageKey: 
     }
   }
 
-  let dragging = false;
   let startX = 0;
   let startY = 0;
   let startTop = 0;
   let startLeft = 0;
+  let lastX = 0;
+  let lastY = 0;
+  let frame = 0;
 
-  handle.addEventListener('mousedown', (e: MouseEvent) => {
-    dragging = true;
-    const rect = container.getBoundingClientRect();
-    startX = e.clientX;
-    startY = e.clientY;
-    startTop = rect.top;
-    startLeft = rect.left;
-    e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', (e: MouseEvent) => {
-    if (!dragging) return;
+  // Positions from the most recent mousemove — run at most once per animation frame.
+  const applyPosition = (): void => {
+    frame = 0;
     const maxTop = Math.max(0, window.innerHeight - container.offsetHeight);
     const maxLeft = Math.max(0, window.innerWidth - container.offsetWidth);
-    const top = Math.min(Math.max(0, startTop + (e.clientY - startY)), maxTop);
-    const left = Math.min(Math.max(0, startLeft + (e.clientX - startX)), maxLeft);
+    const top = Math.min(Math.max(0, startTop + (lastY - startY)), maxTop);
+    const left = Math.min(Math.max(0, startLeft + (lastX - startX)), maxLeft);
     container.style.top = `${top}px`;
     container.style.left = `${left}px`;
     container.style.right = 'auto';
-  });
+  };
 
-  document.addEventListener('mouseup', () => {
-    if (!dragging) return;
-    dragging = false;
+  const onMove = (e: MouseEvent): void => {
+    lastX = e.clientX;
+    lastY = e.clientY;
+    if (!frame) frame = requestAnimationFrame(applyPosition);
+  };
+
+  // The document-level listeners only exist for the duration of a drag, so they don't
+  // fire on every mouse move over the map (including WME's own map drags).
+  const onUp = (): void => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if (frame) { cancelAnimationFrame(frame); applyPosition(); }
     const rect = container.getBoundingClientRect();
     GM_setValue(storageKey, JSON.stringify({ top: rect.top, left: rect.left }));
+  };
+
+  handle.addEventListener('mousedown', (e: MouseEvent) => {
+    const rect = container.getBoundingClientRect();
+    startX = lastX = e.clientX;
+    startY = lastY = e.clientY;
+    startTop = rect.top;
+    startLeft = rect.left;
+    e.preventDefault();
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
 }
 
@@ -530,58 +582,38 @@ function buildPanelHTML(): string {
         <div class="wmereq-hint">Select a segment, map note, or place on the map to get started.</div>
       </div>
 
-      <div class="wmereq-quick-actions" id="wmereq-quick-actions">
-        ${QUICK_ACTION_TYPES.map((type) => quickActionButtonHTML(type, 'wmereq-quick')).join('')}
-      </div>
-
       <div class="wmereq-section">
         <label>Country</label>
         <select id="wmereq-country">
           <option value="">Loading…</option>
         </select>
 
-        <label>Region <span style="font-weight:400;color:#888">(optional)</span></label>
+        <label>Region <span class="wmereq-optional">(optional)</span></label>
         <select id="wmereq-region">
           <option value="">Country-wide</option>
         </select>
 
-        <label>Request Type</label>
-        <select id="wmereq-type">
-          <option value="downlock">Downlock</option>
-          <option value="uplock">Uplock</option>
-          <option value="imagery">Imagery</option>
-          <option value="accept_pur">Accept PUR</option>
-          <option value="decline_pur">Decline PUR</option>
-        </select>
-
         <div id="wmereq-lock-row">
-          <label>Lock Level <span id="wmereq-lock-hint" style="font-weight:400;color:#888"></span></label>
+          <label>Lock Level <span id="wmereq-lock-hint" class="wmereq-optional"></span></label>
           <select id="wmereq-lock">
-            <option value="">— select —</option>
-            ${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}">${n}</option>`).join('')}
+            ${LOCK_LEVEL_OPTIONS_HTML}
           </select>
         </div>
 
-        <label>Notes (optional)</label>
+        <label>Notes <span class="wmereq-optional">(optional)</span></label>
         <textarea id="wmereq-notes" placeholder="Any extra context…"></textarea>
 
-        ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-btn-screenshot" style="width:100%;box-sizing:border-box;margin-bottom:8px">Attach Screenshot</button>` : ''}
+        ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot wmereq-btn-block" id="wmereq-btn-screenshot">Attach Screenshot</button>` : ''}
 
-        <button class="wmereq-btn wmereq-btn-downlock" id="wmereq-btn-submit-downlock">Submit Downlock</button>
-        <button class="wmereq-btn wmereq-btn-uplock" id="wmereq-btn-submit-uplock">Submit Uplock</button>
-        <button class="wmereq-btn wmereq-btn-imagery"  id="wmereq-btn-submit-imagery">Submit Imagery</button>
-        <button class="wmereq-btn wmereq-btn-accept-pur" id="wmereq-btn-submit-accept-pur">Submit Accept PUR</button>
-        <button class="wmereq-btn wmereq-btn-decline-pur" id="wmereq-btn-submit-decline-pur">Submit Decline PUR</button>
+        <div class="wmereq-submit-row">
+          ${QUICK_ACTION_TYPES.map((type) => `<button class="wmereq-btn wmereq-btn-${typeSlug(type)}" id="wmereq-btn-submit-${typeSlug(type)}" title="Submit a ${describeType(type)} request" style="display:none">${describeType(type)}</button>`).join('\n          ')}
+        </div>
 
         <div id="wmereq-status" class="wmereq-status info" style="display:none"></div>
       </div>
 
-      <div class="wmereq-section" id="wmereq-settings-section">
-        <div style="font-weight:600;margin-bottom:8px;color:#333">Settings</div>
-
-        <div class="wmereq-quick-actions" id="wmereq-settings-quick-actions">
-          ${QUICK_ACTION_TYPES.map((type) => quickActionButtonHTML(type, 'wmereq-settings-quick')).join('')}
-        </div>
+      <details class="wmereq-section wmereq-settings">
+        <summary>Settings</summary>
 
         <label>API Base URL</label>
         <input id="wmereq-api-base" type="url" value="${escHtml(apiBase)}" placeholder="https://your-project.your-subdomain.workers.dev" />
@@ -596,52 +628,78 @@ function buildPanelHTML(): string {
         <label>Show on Map</label>
         <div class="wmereq-fab-visibility">
           ${FAB_TYPES.map((type) => `
-            <label style="display:flex;align-items:center;font-weight:400;margin-bottom:4px">
-              <input type="checkbox" id="wmereq-fab-visible-${type.replace('_', '-')}" style="width:auto;margin:0 6px 0 0" ${fabVisible[type as keyof FabVisibility] !== false ? 'checked' : ''} />
+            <label class="wmereq-checkbox">
+              <input type="checkbox" id="wmereq-fab-visible-${typeSlug(type)}" ${fabVisible[type as keyof FabVisibility] !== false ? 'checked' : ''} />
               ${describeType(type)}
             </label>`).join('')}
         </div>
 
-        <button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-fab-reset-pos" style="width:100%;box-sizing:border-box;margin-bottom:8px">Reset Button Position</button>
-
-        <button class="wmereq-btn wmereq-btn-primary" id="wmereq-settings-save">Save Settings</button>
-      </div>
+        <div class="wmereq-settings-actions">
+          <button class="wmereq-btn wmereq-btn-primary" id="wmereq-settings-save">Save</button>
+          <button type="button" class="wmereq-btn wmereq-btn-cancel" id="wmereq-fab-reset-pos">Reset Button Position</button>
+        </div>
+      </details>
 
       <div class="wmereq-version">${SCRIPT_NAME} v${escHtml(getScriptVersion())}</div>
     </div>`;
 }
 
 function bindPanelEvents(): void {
-  on('wmereq-type', 'change', syncLockRow);
   on('wmereq-country', 'change', (e: Event) => fetchRegions((e.target as HTMLSelectElement).value));
-  on('wmereq-btn-submit-downlock', 'click', () => submitRequest('downlock'));
-  on('wmereq-btn-submit-uplock', 'click', () => submitRequest('uplock'));
-  on('wmereq-btn-submit-imagery', 'click', () => submitRequest('imagery'));
-  on('wmereq-btn-submit-accept-pur', 'click', () => submitRequest('accept_pur'));
-  on('wmereq-btn-submit-decline-pur', 'click', () => submitRequest('decline_pur'));
   on('wmereq-settings-save', 'click', saveSettings);
   on('wmereq-fab-reset-pos', 'click', resetFabPosition);
-  on('wmereq-btn-screenshot', 'click', handleScreenshotButtonClick);
-  for (const prefix of ['wmereq-quick', 'wmereq-settings-quick']) {
-    on(`${prefix}-downlock`, 'click', () => quickSubmit('downlock', showStatus));
-    on(`${prefix}-uplock`, 'click', () => quickSubmit('uplock', showStatus));
-    on(`${prefix}-imagery`, 'click', () => quickSubmit('imagery', showStatus));
-    on(`${prefix}-accept-pur`, 'click', () => quickSubmit('accept_pur', showStatus));
-    on(`${prefix}-decline-pur`, 'click', () => quickSubmit('decline_pur', showStatus));
+  on('wmereq-btn-screenshot', 'click', () => captureScreenshotFromButton(byId<HTMLButtonElement>('wmereq-btn-screenshot'), (msg) => showStatus(msg, 'error')));
+  for (const type of QUICK_ACTION_TYPES) {
+    on(`wmereq-btn-submit-${typeSlug(type)}`, 'click', () => submitRequest(type));
   }
 }
 
-// ── Viewport screenshot (optional, Chrome-only) ───────────────────────────────
-// Uses the Element Capture API (RestrictionTarget) to crop a getDisplayMedia
-// stream down to just the map viewport element. This is a very new, Chrome-only
-// API — screenshotCaptureSupported() gates the button so unsupported browsers
-// (Firefox, Safari, older Chrome) simply don't see the option.
+// ── Viewport screenshot (optional) ────────────────────────────────────────────
+// Captures the current tab with getDisplayMedia and reduces it to just the map
+// viewport element. Where the Element Capture API (RestrictionTarget) exists
+// (Chrome), the stream itself is restricted to the viewport. Elsewhere (Edge,
+// Firefox, …) we grab a frame of the whole tab and crop it to the viewport's
+// bounding rect ourselves. screenshotCaptureSupported() only requires
+// getDisplayMedia, so browsers without any screen capture don't see the option.
 let capturedScreenshotBlob: Blob | null = null;
 
+// The server rejects uploads over 5MB, which a full-resolution PNG of satellite imagery
+// on a high-DPI screen easily exceeds — so the image is scaled down to this longest side
+// and encoded as JPEG, which lands well under the limit.
+const SCREENSHOT_MAX_DIMENSION = 1920;
+const SCREENSHOT_JPEG_QUALITY = 0.85;
+const SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
+
 function screenshotCaptureSupported(): boolean {
-  return typeof RestrictionTarget !== 'undefined' &&
-    typeof ImageCapture !== 'undefined' &&
-    !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  return !!navigator.mediaDevices?.getDisplayMedia;
+}
+
+// Returns a drawable frame from the track: an ImageBitmap via ImageCapture where
+// available, otherwise an off-DOM <video> playing the stream (drawn from directly).
+// ImageCapture.grabFrame() can reject (sometimes with no error value at all, in Chrome)
+// when the track has no frame ready, so a failure there falls through to the <video> path.
+async function grabVideoFrame(track: MediaStreamTrack, stream: MediaStream): Promise<{ source: CanvasImageSource; width: number; height: number }> {
+  if (typeof ImageCapture !== 'undefined') {
+    try {
+      const bitmap = await new ImageCapture(track).grabFrame();
+      return { source: bitmap, width: bitmap.width, height: bitmap.height };
+    } catch (e) {
+      log(`ImageCapture.grabFrame() failed, falling back to a <video> element: ${errorMessage(e)}`);
+    }
+  }
+
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+  await video.play();
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Timed out waiting for a video frame.')), 3000);
+      video.addEventListener('loadeddata', () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  }
+  return { source: video, width: video.videoWidth, height: video.videoHeight };
 }
 
 async function captureViewportScreenshot(): Promise<Blob> {
@@ -650,47 +708,96 @@ async function captureViewportScreenshot(): Promise<Blob> {
 
   const stream = await navigator.mediaDevices.getDisplayMedia({ preferCurrentTab: true } as DisplayMediaStreamOptions);
   const [track] = stream.getVideoTracks();
+  // Element Capture only accepts elements that form their own stacking context, which
+  // WME's map viewport doesn't by default — `isolation: isolate` makes it one without
+  // changing how it renders. Restored once the capture is done.
+  const prevIsolation = viewportEl.style.isolation;
   try {
-    const restrictionTarget = await RestrictionTarget.fromElement(viewportEl);
-    await track.restrictTo(restrictionTarget);
+    let elementCaptured = false;
+    if (typeof RestrictionTarget !== 'undefined' && typeof track.restrictTo === 'function') {
+      try {
+        viewportEl.style.isolation = 'isolate';
+        const restrictionTarget = await RestrictionTarget.fromElement(viewportEl);
+        await track.restrictTo(restrictionTarget);
+        elementCaptured = true;
+      } catch (e) {
+        log(`Element Capture failed, falling back to cropping the tab capture: ${errorMessage(e)}`);
+      }
+    }
 
+    // Lets the restriction apply, and lets the "Sharing this tab" infobar finish
+    // resizing the page before the viewport rect is measured below.
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const imgCap = new ImageCapture(track);
-    const imageBitmap = await imgCap.grabFrame();
+    const frame = await grabVideoFrame(track, stream);
 
+    // Source rect within the frame; defaults to the whole frame.
+    let sx = 0, sy = 0, sw = frame.width, sh = frame.height;
+    if (!elementCaptured) {
+      const surface = (track.getSettings() as MediaTrackSettings & { displaySurface?: string }).displaySurface;
+      if (surface && surface !== 'browser') {
+        log(`Screenshot: a ${surface} was shared instead of this tab, so the image can't be cropped to the map viewport; using the full frame.`);
+      } else {
+        const rect = viewportEl.getBoundingClientRect();
+        const scaleX = frame.width / window.innerWidth;
+        const scaleY = frame.height / window.innerHeight;
+        const left = Math.max(0, Math.round(rect.left * scaleX));
+        const top = Math.max(0, Math.round(rect.top * scaleY));
+        const right = Math.min(frame.width, Math.round(rect.right * scaleX));
+        const bottom = Math.min(frame.height, Math.round(rect.bottom * scaleY));
+        if (right > left && bottom > top) {
+          sx = left; sy = top; sw = right - left; sh = bottom - top;
+        } else {
+          log('Screenshot: the map viewport is outside the captured frame; using the full frame.');
+        }
+      }
+    }
+
+    const scale = Math.min(1, SCREENSHOT_MAX_DIMENSION / Math.max(sw, sh));
     const canvas = document.createElement('canvas');
-    canvas.width = imageBitmap.width;
-    canvas.height = imageBitmap.height;
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Failed to get canvas context.');
-    ctx.drawImage(imageBitmap, 0, 0);
+    ctx.drawImage(frame.source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    if (frame.source instanceof ImageBitmap) frame.source.close();
 
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', SCREENSHOT_JPEG_QUALITY));
     if (!blob) throw new Error('Failed to create an image from the canvas.');
+    if (blob.size > SCREENSHOT_MAX_BYTES) throw new Error('The screenshot is too large to upload (over 5MB).');
+    log(`Screenshot captured: ${canvas.width}×${canvas.height}, ${Math.round(blob.size / 1024)}KB.`);
     return blob;
   } finally {
     stream.getTracks().forEach((t) => t.stop());
+    viewportEl.style.isolation = prevIsolation;
   }
 }
 
+// Syncs every Attach Screenshot button (the panel's, and the reason modal's while it's
+// open) with the shared capturedScreenshotBlob.
 function updateScreenshotButton(): void {
-  const btn = byId('wmereq-btn-screenshot');
-  if (!btn) return;
-  btn.textContent = capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot';
+  document.querySelectorAll<HTMLButtonElement>('.wmereq-btn-screenshot').forEach((btn) => {
+    btn.textContent = capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot';
+  });
 }
 
-async function handleScreenshotButtonClick(): Promise<void> {
-  const btn = byId<HTMLButtonElement>('wmereq-btn-screenshot');
+// Captures into capturedScreenshotBlob, reporting failures via `onError`. `hideEl` (the
+// reason modal's overlay) is hidden for the duration so it doesn't end up in the image.
+// Returns whether a screenshot was captured.
+async function captureScreenshotFromButton(btn: HTMLButtonElement | null, onError: (message: string) => void, hideEl?: HTMLElement): Promise<boolean> {
   if (btn) { btn.disabled = true; btn.textContent = 'Capturing…'; }
+  if (hideEl) hideEl.style.visibility = 'hidden';
   try {
     capturedScreenshotBlob = await captureViewportScreenshot();
+    return true;
   } catch (e) {
-    const message = (e as Error).message;
+    const message = errorMessage(e);
     log('Screenshot capture failed: ' + message);
-    showStatus(`Screenshot capture failed: ${message}`, 'error');
+    onError(`Screenshot capture failed: ${message}`);
     capturedScreenshotBlob = null;
+    return false;
   } finally {
+    if (hideEl) hideEl.style.visibility = '';
     if (btn) btn.disabled = false;
     updateScreenshotButton();
   }
@@ -744,16 +851,16 @@ function getSelectedEntity(): SelectedEntity | null {
 // click. `window.W` is WME's pre-SDK global app object; still present
 // alongside the new SDK and is the only place this particular state lives.
 function getVenueEntityFromIssueTracker(): SelectedEntity | null {
-  if (!getVenueByIdFn) { log('getVenueEntityFromIssueTracker: no getVenueByIdFn resolved.'); return null; }
+  if (!getVenueByIdFn) { debugLog('getVenueEntityFromIssueTracker: no getVenueByIdFn resolved.'); return null; }
   try {
     const w = pageWindow as unknown as { W?: { issueTrackerController?: { app?: { selectedMarkers?: unknown } } } };
     const markers = w.W?.issueTrackerController?.app?.selectedMarkers;
     const raw = Array.isArray(markers) ? (markers[0] as unknown) : null;
     const venueId = raw != null ? String(raw).split('.')[0] : null;
-    log(`getVenueEntityFromIssueTracker: selectedMarkers = ${JSON.stringify(markers)}, parsed venueId = ${venueId}`);
+    if (DEBUG) debugLog(`getVenueEntityFromIssueTracker: selectedMarkers = ${JSON.stringify(markers)}, parsed venueId = ${venueId}`);
     if (!venueId) return null;
     const venue = getVenueByIdFn({ venueId });
-    log(`getVenueEntityFromIssueTracker: getVenueByIdFn({ venueId: ${venueId} }) = ${venue ? JSON.stringify(venue) : 'nothing'}`);
+    if (DEBUG) debugLog(`getVenueEntityFromIssueTracker: getVenueByIdFn({ venueId: ${venueId} }) = ${venue ? JSON.stringify(venue) : 'nothing'}`);
     return venue ? { kind: 'venue', items: [venue] } : null;
   } catch (e) {
     log('getVenueEntityFromIssueTracker failed: ' + (e as Error).message);
@@ -821,8 +928,7 @@ function groupByLockLevel(items: Segment[]): { level: number | null; items: Segm
   const order: (number | null)[] = [];
   const buckets = new Map<number | null, Segment[]>();
   for (const item of items) {
-    const raw = item.lockRank;
-    const level = raw != null ? raw + 1 : null;
+    const level = lockLevelOf(item);
     if (!buckets.has(level)) { buckets.set(level, []); order.push(level); }
     buckets.get(level)!.push(item);
   }
@@ -842,113 +948,75 @@ function pick(obj: Record<string, unknown> | null | undefined, keys: string[]): 
 
 // ── Segment / map note selection ─────────────────────────────────────────────
 function onSelectionChanged(): void {
-  const entity = getSelectedEntity();
   const infoDiv = byId('wmereq-segment-info');
-  const lockSel = byId<HTMLSelectElement>('wmereq-lock');
-
   if (!infoDiv) return;
 
+  const entity = getSelectedEntity();
   if (!entity || !entity.items.length) {
     infoDiv.innerHTML = '<div class="wmereq-hint">Select a segment, map note, or place on the map to get started.</div>';
-    updateTypeOptions(null);
-    updateQuickActionButtons(null);
+    updateSubmitButtons(null);
     injectNativeQuickActions(null);
+    fabKind = null;
+    applyFabVisibility();
     return;
   }
+
+  // Each kind only differs in its title, lock level and extra multi-select hint — the
+  // render and the auto-country/type/button refresh below are shared.
+  let titleHtml: string;
+  let lockLevel: number | null = null;
+  let mixedLockHint = '';
+  // Only segments have a per-entity address lookup (DataModel.Segments.getAddress) — for
+  // places and map notes applyAutoCountry(null) goes straight to the view-based (top
+  // country/state) fallback, which is approximate but the best available.
+  let segment: Segment | null = null;
 
   if (entity.kind === 'venue') {
-    const venues = entity.items;
-    const multiHint = venues.length > 1
-      ? `<div class="wmereq-hint">${venues.length} places selected — permalink will include all of them.</div>`
-      : '';
-    const venue = venues[0];
-    const lockLevel = venue.lockRank != null ? venue.lockRank + 1 : null; // WME stores 0-based rank
-    const placeName = venue.name || 'Unnamed Place';
-    const permalink = buildPermalink(venues, 'venue');
-
-    infoDiv.innerHTML = `
-      ${multiHint}
-      <div class="wmereq-lock-info">
-        <strong>${escHtml(placeName)}</strong>${lockLevel ? ` · Lock: ${lockLevel}` : ''}<br>
-        <small style="word-break:break-all">${escHtml(permalink)}</small>
-      </div>`;
-
-    // Auto-select the inferred lock level, same as segments — a place's lock rank is
-    // what determines whether an editor's rank is enough to accept/decline it themselves.
-    if (lockLevel && lockSel) {
-      lockSel.value = String(lockLevel);
-      const hint = byId('wmereq-lock-hint');
-      if (hint) hint.textContent = `(inferred from place: ${lockLevel})`;
+    const venue = entity.items[0];
+    titleHtml = `<strong>${escHtml(venue.name || 'Unnamed Place')}</strong>`;
+    // A place's lock rank is what determines whether an editor's rank is enough to
+    // accept/decline it themselves, so it's auto-selected the same as a segment's.
+    lockLevel = lockLevelOf(venue);
+  } else if (entity.kind === 'mapComment') {
+    // Map notes don't carry a lock rank, so there's nothing to auto-select on wmereq-lock.
+    const note = entity.items[0];
+    titleHtml = `<strong>Map Note</strong>${note.subject ? `: ${escHtml(note.subject)}` : ''}`;
+  } else {
+    segment = entity.items[0];
+    titleHtml = `<strong>${getRoadTypeName(segment.roadType)}</strong>`;
+    lockLevel = lockLevelOf(segment);
+    const lockLevels = [...new Set(entity.items.map(lockLevelOf))].filter((l): l is number => l != null);
+    if (lockLevels.length > 1) {
+      mixedLockHint = ` — mixed lock levels (${lockLevels.sort((a, b) => a - b).join(', ')}); downlock requests will be sent as separate messages per level`;
     }
-
-    applyAutoCountry(null);
-    updateTypeOptions(entity.kind);
-    updateQuickActionButtons(entity.kind);
-    injectNativeQuickActions(entity.kind);
-    return;
   }
 
-  if (entity.kind === 'mapComment') {
-    const notes = entity.items;
-    const multiHint = notes.length > 1
-      ? `<div class="wmereq-hint">${notes.length} map notes selected — permalink will include all of them.</div>`
-      : '';
-    const note = notes[0];
-    const permalink = buildPermalink(notes, 'mapComment');
-
-    infoDiv.innerHTML = `
-      ${multiHint}
-      <div class="wmereq-lock-info">
-        <strong>Map Note</strong>${note.subject ? `: ${escHtml(note.subject)}` : ''}<br>
-        <small style="word-break:break-all">${escHtml(permalink)}</small>
-      </div>`;
-
-    // Map notes don't carry a lock rank the way segments do, so nothing to
-    // auto-select on wmereq-lock here. There's also no per-entity address
-    // lookup for a note (only Segments exposes getAddress) — applyAutoCountry(null)
-    // skips the exact-address attempt and falls straight to the view-based
-    // (top country/state) fallback, which is approximate but the best available.
-    applyAutoCountry(null);
-    updateTypeOptions(entity.kind);
-    updateQuickActionButtons(entity.kind);
-    injectNativeQuickActions(entity.kind);
-    return;
-  }
-
-  const segments = entity.items;
-  const lockLevels = [...new Set(segments.map((s) => (s.lockRank != null ? s.lockRank + 1 : null)))].filter(
-    (l): l is number => l != null,
-  );
-  const mixedLockHint = lockLevels.length > 1
-    ? ` — mixed lock levels (${lockLevels.sort((a, b) => a - b).join(', ')}); downlock requests will be sent as separate messages per level`
+  const count = entity.items.length;
+  const multiHint = count > 1
+    ? `<div class="wmereq-hint">${count} ${KIND_LABELS[entity.kind]}s selected${mixedLockHint} — permalink will include all of them.</div>`
     : '';
-  const multiHint = segments.length > 1
-    ? `<div class="wmereq-hint">${segments.length} segments selected${mixedLockHint} — permalink will include all of them.</div>`
-    : '';
-
-  const seg = segments[0];
-  const lockLevel = seg.lockRank != null ? seg.lockRank + 1 : null; // WME stores 0-based rank
-  const roadType = getRoadTypeName(seg.roadType);
-  const permalink = buildPermalink(segments, 'segment');
+  const permalink = buildPermalink(entity.items, entity.kind);
 
   infoDiv.innerHTML = `
     ${multiHint}
     <div class="wmereq-lock-info">
-      <strong>${roadType}</strong>${lockLevel ? ` · Lock: ${lockLevel}` : ''}<br>
+      ${titleHtml}${lockLevel ? ` · Lock: ${lockLevel}` : ''}<br>
       <small style="word-break:break-all">${escHtml(permalink)}</small>
     </div>`;
 
   // Auto-select the inferred lock level
+  const lockSel = byId<HTMLSelectElement>('wmereq-lock');
   if (lockLevel && lockSel) {
     lockSel.value = String(lockLevel);
     const hint = byId('wmereq-lock-hint');
-    if (hint) hint.textContent = `(inferred from segment: ${lockLevel})`;
+    if (hint) hint.textContent = `(inferred from ${KIND_LABELS[entity.kind]}: ${lockLevel})`;
   }
 
-  applyAutoCountry(seg);
-  updateTypeOptions(entity.kind);
-  updateQuickActionButtons(entity.kind);
+  applyAutoCountry(segment);
+  updateSubmitButtons(entity.kind);
   injectNativeQuickActions(entity.kind);
+  fabKind = entity.kind;
+  applyFabVisibility();
 }
 
 // Matches a WME country/state object against one of our own backend's lists, by
@@ -986,20 +1054,21 @@ function getSegmentAddress(seg: Segment | null | undefined): SegmentAddress | nu
   }
 }
 
-// Resolves the country for the current context: if a segment is given, its own
+// Resolves the country for the current context: if a segment's address is given, its
 // SegmentAddress.country is exact and tried first; otherwise (or if that doesn't
 // resolve) falls back to WME's "top country" for the current map view, which is
 // only approximate — it can be wrong near borders or for small regions.
-function resolveCurrentCountryId(seg: Segment | null | undefined): number | null {
+function resolveCurrentCountryId(address: SegmentAddress | null): number | null {
   if (!countries.length) { debugLog('resolveCurrentCountryId: no countries loaded from the API yet.'); return null; }
 
-  const address = getSegmentAddress(seg);
   if (address) {
     const match = matchByNameOrCode(countries, address.country);
-    log(
-      `resolveCurrentCountryId: segment address country=${address.country ? JSON.stringify(address.country) : 'null'} ` +
-      `→ ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
-    );
+    if (DEBUG) {
+      debugLog(
+        `resolveCurrentCountryId: segment address country=${address.country ? JSON.stringify(address.country) : 'null'} ` +
+        `→ ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
+      );
+    }
     if (match) return match.id;
   }
 
@@ -1022,28 +1091,32 @@ function resolveCurrentCountryId(seg: Segment | null | undefined): number | null
   }
 }
 
-function applyAutoCountry(seg: Segment | null | undefined): void {
+// The segment's address is looked up once here and passed down to both the country and
+// (via fetchRegions) the region resolution, rather than each fetching it again.
+function applyAutoCountry(seg: Segment | null): void {
   const countrySel = byId<HTMLSelectElement>('wmereq-country');
   if (!countrySel) return;
-  const resolved = resolveCurrentCountryId(seg);
+  const address = getSegmentAddress(seg);
+  const resolved = resolveCurrentCountryId(address);
   if (resolved) {
     countrySel.value = String(resolved);
-    fetchRegions(String(resolved), seg);
+    fetchRegions(String(resolved), address);
   }
 }
 
 // Resolves the region for the current context — same segment-address-first, then
 // view-based-fallback approach as resolveCurrentCountryId, but for state/province.
-function resolveCurrentRegionId(seg: Segment | null | undefined): number | null {
+function resolveCurrentRegionId(address: SegmentAddress | null): number | null {
   if (!regions.length) { debugLog('resolveCurrentRegionId: no regions loaded for the current country.'); return null; }
 
-  const address = getSegmentAddress(seg);
   if (address) {
     const match = matchByNameOrCode(regions, address.state);
-    log(
-      `resolveCurrentRegionId: segment address state=${address.state ? JSON.stringify(address.state) : 'null'} — ` +
-      `configured regions: [${regions.map((r) => `${r.name}/${r.code}`).join(', ')}] → ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
-    );
+    if (DEBUG) {
+      debugLog(
+        `resolveCurrentRegionId: segment address state=${address.state ? JSON.stringify(address.state) : 'null'} — ` +
+        `configured regions: [${regions.map((r) => `${r.name}/${r.code}`).join(', ')}] → ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
+      );
+    }
     if (match) return match.id;
   }
 
@@ -1056,12 +1129,12 @@ function resolveCurrentRegionId(seg: Segment | null | undefined): number | null 
     }
     if (DEBUG) debugLog(`resolveCurrentRegionId: top state object = ${JSON.stringify(topState)}`);
     const match = matchByNameOrCode(regions, topState);
-    // Always printed (not gated behind DEBUG) so it's easy to see live in WME why a
-    // given region did or didn't match, without needing to flip on debug mode first.
-    log(
-      `resolveCurrentRegionId: view state — configured regions: ` +
-      `[${regions.map((r) => `${r.name}/${r.code}`).join(', ')}] → ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
-    );
+    if (DEBUG) {
+      debugLog(
+        `resolveCurrentRegionId: view state — configured regions: ` +
+        `[${regions.map((r) => `${r.name}/${r.code}`).join(', ')}] → ${match ? `matched "${match.name}" (id ${match.id})` : 'no match'}`,
+      );
+    }
     return match ? match.id : null;
   } catch (e) {
     debugLog('resolveCurrentRegionId: getTopState threw: ' + (e as Error).message);
@@ -1069,10 +1142,10 @@ function resolveCurrentRegionId(seg: Segment | null | undefined): number | null 
   }
 }
 
-function applyAutoRegion(seg: Segment | null | undefined): void {
+function applyAutoRegion(address: SegmentAddress | null): void {
   const regionSel = byId<HTMLSelectElement>('wmereq-region');
   if (!regionSel) return;
-  const resolved = resolveCurrentRegionId(seg);
+  const resolved = resolveCurrentRegionId(address);
   regionSel.value = resolved ? String(resolved) : '';
 }
 
@@ -1131,54 +1204,23 @@ function getCurrentUserInfo(): { userName: string; editorRank: number | null } {
   return { userName, editorRank: rankRaw != null ? rankRaw + 1 : null }; // WME stores 0-based rank
 }
 
-function syncLockRow(): void {
-  const typeVal = byId<HTMLSelectElement>('wmereq-type')?.value as RequestType | undefined;
-  const lockRow = byId('wmereq-lock-row');
-  if (lockRow) lockRow.style.display = typeVal && LOCK_GATED_TYPES.includes(typeVal) ? '' : 'none';
-}
-
-// Which request types are valid for a given entity kind — the inverse of
-// TYPE_ENTITY_KINDS. `kind` null means nothing is selected, in which case every type
-// is shown (there's nothing to filter against yet).
-function validTypesForKind(kind: EntityKind | null): RequestType[] {
-  return kind
-    ? (Object.keys(TYPE_ENTITY_KINDS) as RequestType[]).filter((type) => TYPE_ENTITY_KINDS[type].includes(kind))
-    : (Object.keys(TYPE_ENTITY_KINDS) as RequestType[]);
-}
-
-// Limits the Request Type dropdown to the types valid for whatever's currently
-// selected — e.g. a place only offers Accept/Decline PUR, a segment only Downlock/Imagery
-// — so the type shown always matches what the native edit panel on the left is open on.
-function updateTypeOptions(kind: EntityKind | null): void {
-  const sel = byId<HTMLSelectElement>('wmereq-type');
-  if (!sel) return;
-  const validTypes = validTypesForKind(kind);
-  [...sel.options].forEach((opt) => {
-    const valid = validTypes.includes(opt.value as RequestType);
-    opt.hidden = !valid;
-    opt.disabled = !valid;
-  });
-  if (!validTypes.includes(sel.value as RequestType) && validTypes.length) sel.value = validTypes[0];
-  syncLockRow();
+// Which request types are valid for a given entity kind — the inverse of TYPE_ENTITY_KINDS.
+function validTypesForKind(kind: EntityKind): RequestType[] {
+  return (Object.keys(TYPE_ENTITY_KINDS) as RequestType[]).filter((type) => TYPE_ENTITY_KINDS[type].includes(kind));
 }
 
 const QUICK_ACTION_TYPES: RequestType[] = ['downlock', 'uplock', 'imagery', 'accept_pur', 'decline_pur'];
-// Two identical button rows share this show/hide logic: the main "wmereq-quick-*" row
-// (panel counterpart to the floating action buttons) and "wmereq-settings-quick-*" in the
-// Settings section.
-const QUICK_ACTION_BUTTON_PREFIXES = ['wmereq-quick', 'wmereq-settings-quick'];
 
-// Shows/hides the in-panel quick-action buttons to match whichever types are valid for the
-// current selection. Unlike updateTypeOptions, a null kind (nothing selected) hides all of
-// them rather than showing everything — there's no entity to act on yet.
-function updateQuickActionButtons(kind: EntityKind | null): void {
+// Shows only the panel's Submit buttons valid for the current selection (none when nothing
+// is selected), and the Lock Level row only when one of those types uses it.
+function updateSubmitButtons(kind: EntityKind | null): void {
   const validTypes = kind ? validTypesForKind(kind) : [];
-  for (const prefix of QUICK_ACTION_BUTTON_PREFIXES) {
-    for (const type of QUICK_ACTION_TYPES) {
-      const btn = byId(`${prefix}-${type.replace('_', '-')}`);
-      if (btn) btn.style.display = validTypes.includes(type) ? '' : 'none';
-    }
+  for (const type of QUICK_ACTION_TYPES) {
+    const btn = byId(`wmereq-btn-submit-${typeSlug(type)}`);
+    if (btn) btn.style.display = validTypes.includes(type) ? '' : 'none';
   }
+  const lockRow = byId('wmereq-lock-row');
+  if (lockRow) lockRow.style.display = validTypes.some((t) => LOCK_GATED_TYPES.includes(t)) ? '' : 'none';
 }
 
 const NATIVE_QUICK_ACTIONS_CLASS = 'wmereq-native-quick-actions';
@@ -1215,7 +1257,7 @@ function injectNativeQuickActions(kind: EntityKind | null, attempt?: number): vo
   for (const type of types) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = `wmereq-btn wmereq-btn-sm wmereq-btn-${type.replace('_', '-')}`;
+    btn.className = `wmereq-btn wmereq-btn-sm wmereq-btn-${typeSlug(type)}`;
     btn.title = `Quick-submit a ${describeType(type)} request`;
     btn.textContent = quickActionLabel(type);
     btn.dataset.wmereqQaType = type;
@@ -1267,13 +1309,14 @@ function stripUpdateRequestParams(href: string): string {
   }
 }
 
+const ROAD_TYPE_NAMES: Record<number, string> = {
+  1: 'Street', 2: 'Primary Street', 3: 'Freeway', 4: 'Ramp', 5: 'Walking Trail', 6: 'Major Highway',
+  7: 'Minor Highway', 8: 'Dirt Road/4x4 Trail', 10: 'Pedestrian Boardwalk', 16: 'Stairway',
+  17: 'Private Road', 18: 'Railroad', 19: 'Runway/Taxiway', 20: 'Parking Lot Road', 21: 'Service Road',
+};
+
 function getRoadTypeName(type: Segment['roadType']): string {
-  const names: Record<number, string> = {
-    1: 'Street', 2: 'Primary Street', 3: 'Freeway', 4: 'Ramp', 5: 'Walking Trail', 6: 'Major Highway',
-    7: 'Minor Highway', 8: 'Dirt Road/4x4 Trail', 10: 'Pedestrian Boardwalk', 16: 'Stairway',
-    17: 'Private Road', 18: 'Railroad', 19: 'Runway/Taxiway', 20: 'Parking Lot Road', 21: 'Service Road',
-  };
-  return names[type] || `Road (${type})`;
+  return ROAD_TYPE_NAMES[type] || `Road (${type})`;
 }
 
 // ── Reason modal (downlock + Accept/Decline PUR) ──────────────────────────────
@@ -1343,8 +1386,7 @@ function openReasonModal({ title, reasons, tooltips, requireLevel }: ReasonModal
         ${requireLevel ? `
         <label>Target Lock Level</label>
         <select id="wmereq-reason-level">
-          <option value="">— select —</option>
-          ${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}">${n}</option>`).join('')}
+          ${LOCK_LEVEL_OPTIONS_HTML}
         </select>` : ''}
         <div class="wmereq-hint">Select one or more quick reasons, or add your own below.</div>
         <div class="wmereq-reason-chips">
@@ -1352,6 +1394,8 @@ function openReasonModal({ title, reasons, tooltips, requireLevel }: ReasonModal
         </div>
         <label>Additional details (optional)</label>
         <textarea id="wmereq-reason-custom" placeholder="Any extra context…"></textarea>
+        ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot" id="wmereq-reason-screenshot">${capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot'}</button>
+        <div class="wmereq-reason-error" id="wmereq-reason-error" style="display:none"></div>` : ''}
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="wmereq-btn wmereq-btn-primary" id="wmereq-reason-confirm">Continue</button>
           <button class="wmereq-btn wmereq-btn-cancel" id="wmereq-reason-cancel">Cancel</button>
@@ -1367,8 +1411,26 @@ function openReasonModal({ title, reasons, tooltips, requireLevel }: ReasonModal
       });
     });
 
+    // Set once a screenshot is taken from this modal, so Cancel can drop it rather than
+    // leaving it attached to whatever request is submitted next.
+    let capturedHere = false;
+    const shotBtn = dlg.querySelector<HTMLButtonElement>('#wmereq-reason-screenshot');
+    shotBtn?.addEventListener('click', async () => {
+      const errEl = dlg.querySelector<HTMLElement>('#wmereq-reason-error')!;
+      errEl.style.display = 'none';
+      const ok = await captureScreenshotFromButton(shotBtn, (msg) => {
+        errEl.textContent = msg;
+        errEl.style.display = '';
+      }, dlg);
+      if (ok) capturedHere = true;
+    });
+
     function close(confirmed: boolean, reason?: string, level?: number | null): void {
       document.body.removeChild(dlg);
+      if (!confirmed && capturedHere) {
+        capturedScreenshotBlob = null;
+        updateScreenshotButton();
+      }
       resolve(confirmed ? { confirmed: true, reason: reason ?? null, level: level ?? null } : { confirmed: false, reason: null, level: null });
     }
 
@@ -1396,7 +1458,9 @@ async function submitRequest(type: RequestType): Promise<void> {
   if (LOCK_GATED_TYPES.includes(type) && !lockLevel) { showStatus('Please select a lock level.', 'error'); return; }
 
   const entity = getSelectedEntity();
-  const cfg = getReasonModalConfig(type, entity ? entity.kind : null);
+  if (!checkEntityForType(type, entity, showStatus, 'Please select a segment, map note, or place first.')) return;
+
+  const cfg = getReasonModalConfig(type, entity.kind);
   if (cfg) {
     // requireLevel is deliberately omitted here — the panel form already has its own
     // explicit Lock Level select above, so the reason modal doesn't need to duplicate it.
@@ -1405,7 +1469,23 @@ async function submitRequest(type: RequestType): Promise<void> {
     if (reason) notes = notes ? `Reason: ${reason}\n${notes}` : `Reason: ${reason}`;
   }
 
-  await doSubmit(type, { countryId, regionId, lockLevel, notes, status: showStatus });
+  await doSubmit(type, { entity, countryId, regionId, lockLevel, notes, status: showStatus });
+}
+
+// Reports (via `status`) and returns false if nothing is selected or the selection's kind
+// can't take this request type — see TYPE_ENTITY_KINDS.
+function checkEntityForType(
+  type: RequestType,
+  entity: SelectedEntity | null,
+  status: StatusFn,
+  emptyMessage: string,
+): entity is SelectedEntity {
+  if (!entity || !entity.items.length) { status(emptyMessage, 'error'); return false; }
+  if (!TYPE_ENTITY_KINDS[type].includes(entity.kind)) {
+    status(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
+    return false;
+  }
+  return true;
 }
 
 // Quick submit from the floating action buttons, using the currently selected
@@ -1415,18 +1495,13 @@ async function submitRequest(type: RequestType): Promise<void> {
 // in-panel quick-action buttons pass showStatus instead, so feedback lands in the panel.
 async function quickSubmit(type: RequestType, statusFn: StatusFn = showFabStatus): Promise<void> {
   const entity = getSelectedEntity();
-  if (!entity || !entity.items.length) { statusFn('Select a segment, map note, or place first.', 'error'); return; }
-  if (!TYPE_ENTITY_KINDS[type].includes(entity.kind)) {
-    statusFn(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
-    return;
-  }
+  if (!checkEntityForType(type, entity, statusFn, 'Select a segment, map note, or place first.')) return;
 
-  const isSegment = entity.kind === 'segment';
-  const item = entity.items[0];
   // Only segments have a per-entity address lookup (DataModel.Segments.getAddress) —
   // venues/notes fall back to the view-based (top country/state) detection.
-  const countryId = resolveCurrentCountryId(isSegment ? (item as Segment) : null);
-  const regionId = resolveCurrentRegionId(isSegment ? (item as Segment) : null);
+  const address = entity.kind === 'segment' ? getSegmentAddress(entity.items[0]) : null;
+  const countryId = resolveCurrentCountryId(address);
+  const regionId = resolveCurrentRegionId(address);
 
   // Uplock has no current level to infer from — the whole point is asking for a *higher*
   // level than what's set now, so the target has to be an explicit choice (via the reason
@@ -1436,8 +1511,7 @@ async function quickSubmit(type: RequestType, statusFn: StatusFn = showFabStatus
   // levels itself and splits mixed-level segment selections into separate requests.
   let lockLevel: number | null = null;
   if (type !== 'uplock' && (entity.kind === 'segment' || entity.kind === 'venue')) {
-    const lockRankRaw = entity.items.map((it) => (it as Segment | Venue).lockRank).find((r) => r != null);
-    lockLevel = lockRankRaw != null ? lockRankRaw + 1 : null;
+    lockLevel = entity.items.map((it) => lockLevelOf(it as Segment | Venue)).find((l) => l != null) ?? null;
   }
 
   if (!countryId) { statusFn('Could not detect the country — use the panel.', 'error'); return; }
@@ -1458,18 +1532,20 @@ async function quickSubmit(type: RequestType, statusFn: StatusFn = showFabStatus
 
   if (type === 'uplock' && !lockLevel) { statusFn('Please select a target lock level.', 'error'); return; }
 
-  await doSubmit(type, { countryId: String(countryId), regionId: regionId ? String(regionId) : '', lockLevel: lockLevel ? String(lockLevel) : '', notes, status: statusFn });
+  await doSubmit(type, { entity, countryId: String(countryId), regionId: regionId ? String(regionId) : '', lockLevel: lockLevel ? String(lockLevel) : '', notes, status: statusFn });
 }
 
 function describeType(type: RequestType): string {
-  return { downlock: 'Downlock', uplock: 'Uplock', imagery: 'Imagery', accept_pur: 'Accept PUR', decline_pur: 'Decline PUR' }[type] || type;
+  return TYPE_LABELS[type] || type;
 }
 
 function describeKind(kind: EntityKind): string {
-  return { segment: 'segment', mapComment: 'map note', venue: 'place' }[kind] || kind;
+  return KIND_LABELS[kind] || kind;
 }
 
 interface DoSubmitOptions {
+  // Already resolved and checked against `type` by the caller (submitRequest/quickSubmit).
+  entity: SelectedEntity;
   countryId: string;
   regionId: string;
   lockLevel: string;
@@ -1477,14 +1553,7 @@ interface DoSubmitOptions {
   status: StatusFn;
 }
 
-async function doSubmit(type: RequestType, { countryId, regionId, lockLevel, notes, status }: DoSubmitOptions): Promise<void> {
-  const entity = getSelectedEntity();
-  if (!entity || !entity.items.length) { status('Please select a segment, map note, or place first.', 'error'); return; }
-  if (!TYPE_ENTITY_KINDS[type].includes(entity.kind)) {
-    status(`${describeType(type)} requests require a selected ${TYPE_ENTITY_KINDS[type].map(describeKind).join(' or ')}.`, 'error');
-    return;
-  }
-
+async function doSubmit(type: RequestType, { entity, countryId, regionId, lockLevel, notes, status }: DoSubmitOptions): Promise<void> {
   const { userName, editorRank } = getCurrentUserInfo();
   const parsedLockLevel = lockLevel ? parseInt(lockLevel, 10) : null;
 
@@ -1501,13 +1570,20 @@ async function doSubmit(type: RequestType, { countryId, regionId, lockLevel, not
   // Uploaded once (if any) and its key reused across every group's request — not
   // re-uploaded per group — so it's already present when notifications fire.
   let screenshotKey: string | null = null;
+  // Shown alongside the success message — a failed upload doesn't block the request,
+  // but the user should know it went without the screenshot they attached.
+  let screenshotWarning = '';
   if (capturedScreenshotBlob) {
     status('Uploading screenshot…', 'info');
     try {
-      const upload = await apiPostBlob('/screenshots', capturedScreenshotBlob);
+      const upload = await gmRequest<ScreenshotUploadResult>(
+        'POST', '/screenshots', capturedScreenshotBlob, capturedScreenshotBlob.type || 'image/jpeg',
+      );
       screenshotKey = upload.key;
     } catch (e) {
-      log('Screenshot upload failed, continuing without it: ' + (e as Error).message);
+      const message = (e as Error).message;
+      log('Screenshot upload failed, continuing without it: ' + message);
+      screenshotWarning = ` (Screenshot upload failed: ${message})`;
     }
   }
 
@@ -1538,15 +1614,15 @@ async function doSubmit(type: RequestType, { countryId, regionId, lockLevel, not
 
       log(`doSubmit: request body = ${JSON.stringify(body)}`);
       status(groups.length > 1 ? `Submitting L${groupLevel ?? '?'} request…` : 'Submitting…', 'info');
-      results.push(await apiPost('/requests', body));
+      results.push(await gmRequest<ApiRequestResult>('POST', '/requests', body));
     }
 
     if (results.length) {
       status(
-        results.length > 1
+        (results.length > 1
           ? `${results.length} requests submitted successfully (#${results.map((r) => r.id).join(', #')}).`
-          : `Request #${results[0].id} submitted successfully.`,
-        'ok',
+          : `Request #${results[0].id} submitted successfully.`) + screenshotWarning,
+        screenshotWarning ? 'error' : 'ok',
       );
       capturedScreenshotBlob = null;
       updateScreenshotButton();
@@ -1562,13 +1638,13 @@ async function doSubmit(type: RequestType, { countryId, regionId, lockLevel, not
 // ── Countries / Regions ──────────────────────────────────────────────────────
 async function fetchCountries(): Promise<void> {
   try {
-    countries = await apiGet<ApiCountry[]>('/countries');
+    countries = await gmRequest<ApiCountry[]>('GET', '/countries');
     const sel = byId<HTMLSelectElement>('wmereq-country');
     if (!sel) return;
     sel.innerHTML = countries.length
       ? countries.map((c) => `<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.code)})</option>`).join('')
       : '<option value="">No countries configured</option>';
-    applyAutoCountry(undefined);
+    applyAutoCountry(null);
   } catch (e) {
     const sel = byId<HTMLSelectElement>('wmereq-country');
     if (sel) sel.innerHTML = '<option value="">Error loading countries</option>';
@@ -1579,10 +1655,13 @@ async function fetchCountries(): Promise<void> {
 // Tracks which country's regions are currently loaded, so re-detecting the same
 // country on every selection change (the common case) doesn't refire the API call.
 let regionsLoadedForCountryId: string | null = null;
+// In-flight region requests by country id, so a selection change and a map move landing
+// together share one request instead of each firing their own.
+const regionFetches = new Map<string, Promise<ApiRegion[]>>();
 
 // Refetches the region list for the given country and repopulates the region select.
 // Called whenever the country changes, whether by auto-detect or manual selection.
-async function fetchRegions(countryId: string, seg?: Segment | null): Promise<void> {
+async function fetchRegions(countryId: string, address: SegmentAddress | null = null): Promise<void> {
   const sel = byId<HTMLSelectElement>('wmereq-region');
   if (!countryId) {
     regions = [];
@@ -1591,18 +1670,37 @@ async function fetchRegions(countryId: string, seg?: Segment | null): Promise<vo
     return;
   }
   if (countryId === regionsLoadedForCountryId) {
-    applyAutoRegion(seg);
+    applyAutoRegion(address);
     return;
   }
   try {
-    regions = await apiGet<ApiRegion[]>(`/countries/${countryId}/regions`);
+    let pending = regionFetches.get(countryId);
+    if (!pending) {
+      pending = gmRequest<ApiRegion[]>('GET', `/countries/${countryId}/regions`);
+      regionFetches.set(countryId, pending);
+      const settle = () => { if (regionFetches.get(countryId) === pending) regionFetches.delete(countryId); };
+      pending.then(settle, settle);
+    }
+    const result = await pending;
+    // The country was switched again while this was in flight — its own fetch owns the
+    // region list now, so a late response here mustn't overwrite it.
+    if (byId<HTMLSelectElement>('wmereq-country')?.value !== countryId) {
+      debugLog(`fetchRegions: ignoring stale regions for country ${countryId}.`);
+      return;
+    }
+    // Another caller sharing the same request already populated the list.
+    if (countryId === regionsLoadedForCountryId) {
+      applyAutoRegion(address);
+      return;
+    }
+    regions = result;
     regionsLoadedForCountryId = countryId;
     if (sel) {
       sel.innerHTML =
         '<option value="">Country-wide</option>' +
         regions.map((r) => `<option value="${r.id}">${escHtml(r.name)} (${escHtml(r.code)})</option>`).join('');
     }
-    applyAutoRegion(seg);
+    applyAutoRegion(address);
   } catch (e) {
     log('Failed to load regions: ' + (e as Error).message);
   }
@@ -1615,6 +1713,7 @@ function saveSettings(): void {
     apiBase = val;
     GM_setValue('apiBase', val);
     regionsLoadedForCountryId = null; // a different backend may have different regions for the same id
+    regionFetches.clear();
     fetchCountries();
   }
   fabStyle = (byId<HTMLSelectElement>('wmereq-fab-style')?.value ?? fabStyle) as FabStyle;
@@ -1622,7 +1721,7 @@ function saveSettings(): void {
   applyFabStyle();
 
   for (const type of FAB_TYPES) {
-    const checkbox = byId<HTMLInputElement>(`wmereq-fab-visible-${type.replace('_', '-')}`);
+    const checkbox = byId<HTMLInputElement>(`wmereq-fab-visible-${typeSlug(type)}`);
     if (checkbox) fabVisible[type as keyof FabVisibility] = checkbox.checked;
   }
   GM_setValue('wmereq-fab-visible', JSON.stringify(fabVisible));
@@ -1632,57 +1731,35 @@ function saveSettings(): void {
 }
 
 // ── API helpers (GM_xmlhttpRequest) ───────────────────────────────────────────
-function apiGet<T>(path: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    GM_xmlhttpRequest({
-      method: 'GET',
-      url: `${apiBase}/api${path}`,
-      headers: { 'Content-Type': 'application/json' },
-      onload: (res) => {
-        try {
-          const data = JSON.parse(res.responseText);
-          res.status >= 400 ? reject(new Error(data.error || 'API error')) : resolve(data);
-        } catch (e) { reject(e); }
-      },
-      onerror: (e) => reject(new Error('Network error: ' + (e.error || ''))),
-    });
-  });
-}
+const REQUEST_TIMEOUT_MS = 15000;
 
-function apiPost<T = ApiRequestResult>(path: string, body: unknown): Promise<T> {
+// One request helper for every API call. `data` is sent as JSON unless it's a Blob (the
+// screenshot upload), which goes as the raw body with the given `contentType` —
+// GM_xmlhttpRequest accepts a Blob directly for `data`, same as fetch's body would.
+// The timeout matters: a stalled request would otherwise leave the submit buttons
+// disabled for good.
+function gmRequest<T>(method: 'GET' | 'POST', path: string, data?: unknown, contentType = 'application/json'): Promise<T> {
+  const body = data === undefined ? undefined : data instanceof Blob ? data : JSON.stringify(data);
   return new Promise((resolve, reject) => {
     GM_xmlhttpRequest({
-      method: 'POST',
+      method,
       url: `${apiBase}/api${path}`,
-      headers: { 'Content-Type': 'application/json' },
-      data: JSON.stringify(body),
+      ...(body !== undefined ? { headers: { 'Content-Type': contentType }, data: body } : {}),
+      timeout: REQUEST_TIMEOUT_MS,
       onload: (res) => {
+        let parsed: (T & { error?: string }) | null;
         try {
-          const data = JSON.parse(res.responseText);
-          res.status >= 400 ? reject(new Error(data.error || 'API error')) : resolve(data);
-        } catch (e) { reject(e); }
+          parsed = JSON.parse(res.responseText);
+        } catch {
+          // e.g. a Cloudflare HTML error page instead of our API's JSON
+          reject(new Error(`Unexpected response from the server (HTTP ${res.status}).`));
+          return;
+        }
+        if (res.status >= 400) reject(new Error(parsed?.error || `API error (HTTP ${res.status})`));
+        else resolve(parsed as T);
       },
       onerror: (e) => reject(new Error('Network error: ' + (e.error || ''))),
-    });
-  });
-}
-
-// Uploads a captured screenshot Blob as the raw request body (not JSON) — GM_xmlhttpRequest
-// accepts a Blob directly for `data`, same as fetch's body would.
-function apiPostBlob(path: string, blob: Blob): Promise<ScreenshotUploadResult> {
-  return new Promise((resolve, reject) => {
-    GM_xmlhttpRequest({
-      method: 'POST',
-      url: `${apiBase}/api${path}`,
-      headers: { 'Content-Type': blob.type || 'image/png' },
-      data: blob,
-      onload: (res) => {
-        try {
-          const data = JSON.parse(res.responseText);
-          res.status >= 400 ? reject(new Error(data.error || 'API error')) : resolve(data);
-        } catch (e) { reject(e); }
-      },
-      onerror: (e) => reject(new Error('Network error: ' + (e.error || ''))),
+      ontimeout: () => reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s.`)),
     });
   });
 }
@@ -1699,17 +1776,12 @@ function showStatus(msg: string, type: StatusKind): void {
   el.style.display = 'block';
 }
 
+// Every quick-action button (panel rows and native-injected alike) carries
+// data-wmereq-qa-type, so this one selector covers them plus the FABs and submit buttons.
 function disableButtons(disabled: boolean): void {
-  [
-    'wmereq-btn-submit-downlock', 'wmereq-btn-submit-uplock', 'wmereq-btn-submit-imagery',
-    'wmereq-btn-submit-accept-pur', 'wmereq-btn-submit-decline-pur',
-    'wmereq-fab-downlock', 'wmereq-fab-uplock', 'wmereq-fab-imagery',
-    ...QUICK_ACTION_BUTTON_PREFIXES.flatMap((prefix) => QUICK_ACTION_TYPES.map((type) => `${prefix}-${type.replace('_', '-')}`)),
-  ].forEach((id) => {
-    const btn = byId<HTMLButtonElement>(id);
-    if (btn) btn.disabled = disabled;
-  });
-  document.querySelectorAll<HTMLButtonElement>(`.${NATIVE_QUICK_ACTIONS_CLASS} button`).forEach((btn) => { btn.disabled = disabled; });
+  document
+    .querySelectorAll<HTMLButtonElement>('[data-wmereq-qa-type], .wmereq-fab, [id^="wmereq-btn-submit-"]')
+    .forEach((btn) => { btn.disabled = disabled; });
 }
 
 let fabStatusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1730,6 +1802,13 @@ function clearForm(): void {
 
 function escHtml(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Browser APIs don't always reject with an Error (or with anything at all), so caught
+// values are read through this instead of assuming `.message` exists.
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return e == null ? 'unknown error' : String(e);
 }
 
 function log(msg: string): void { console.log(`[${SCRIPT_NAME}] ${msg}`); }

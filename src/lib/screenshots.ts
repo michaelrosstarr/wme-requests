@@ -3,10 +3,10 @@ import { json, err } from './http'
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
 
-// Absolute URL so external services (Slack/Discord/email/Sheets) can fetch the image —
-// same reasoning as BETTER_AUTH_URL in src/lib/auth.ts.
+// Absolute URL (on APP_URL, this app's own origin) so external services
+// (Slack/Discord/email/Sheets) can fetch the image.
 export function screenshotUrl(key: string | null): string | null {
-  return key ? `${env.BETTER_AUTH_URL}/api/screenshots/${key}` : null
+  return key ? new URL(`/api/screenshots/${key}`, env.APP_URL).href : null
 }
 
 // Public: the userscript uploads the captured viewport image before creating the

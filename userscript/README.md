@@ -7,7 +7,7 @@ Submit **downlock** and **imagery** requests straight from the Waze Map Editor �
 ### Fast, in-editor submission
 - **Two request types** — 🔒 Downlock (lock level too high) and 🖼️ Imagery (needs updated satellite imagery)
 - **Floating quick-submit buttons** — submit a request for whatever segment is selected without opening the sidebar panel at all. Draggable, and remembers where you put them.
-- **Sidebar panel** — for full control: pick a request type, adjust the lock level, add notes, and submit
+- **Sidebar panel** — for full control: adjust the country, region and lock level, add notes, then click the button for the request you want
 - **Multi-segment selection supported** — the generated permalink covers every selected segment
 
 ### Smart auto-detection
@@ -20,7 +20,7 @@ Submit **downlock** and **imagery** requests straight from the Waze Map Editor �
 Quick-pick chips for common reasons (Adjust Speed Limit, Add Speed Bump, Fix Geometry, Add Junction Box, House Numbers, Turn Restrictions) plus a free-text field for anything else — captured automatically in the request notes.
 
 ### Optional viewport screenshot
-On supported Chromium browsers, attach a screenshot of the current map viewport to your request with one click, so moderators can see exactly what you're seeing.
+In browsers that support screen capture (Chrome, Edge; in Firefox the shared window is attached uncropped), attach a screenshot of the current map viewport to your request with one click, so moderators can see exactly what you're seeing.
 
 ### Works with your community's setup
 - Instant notifications to **Slack**, **Discord**, **Telegram**, **email**, or a custom webhook — configured by your community's admins, not you

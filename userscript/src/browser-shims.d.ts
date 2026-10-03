@@ -1,15 +1,15 @@
 // Ambient types for browser APIs newer than what TypeScript's bundled lib.dom.d.ts
 // ships. Both are part of the Element Capture proposal
-// (https://github.com/w3c/mediacapture-region) and are Chrome-only as of writing —
-// see screenshotCaptureSupported() in main.user.ts, which feature-detects both
-// before any of this is used.
+// (https://github.com/w3c/mediacapture-region), which only Chrome ships as of
+// writing — captureViewportScreenshot() in main.user.ts feature-detects both and
+// falls back to cropping a whole-tab capture where they're missing.
 
 declare class RestrictionTarget {
   static fromElement(element: Element): Promise<RestrictionTarget>;
 }
 
 interface MediaStreamTrack {
-  restrictTo(target: RestrictionTarget): Promise<void>;
+  restrictTo?(target: RestrictionTarget): Promise<void>;
 }
 
 // lib.dom.d.ts's ImageCapture is missing grabFrame() (it's in the spec, just not

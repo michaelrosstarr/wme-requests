@@ -241,7 +241,7 @@ Backs the `/reports` dashboard page.
 3. In WME, find the **WME Requests** tab in the sidebar.
 4. Click **⚙** (settings) and enter your Cloudflare Workers URL, e.g. `https://your-project.your-subdomain.workers.dev`.
 5. Select a segment on the map — the lock level is read automatically.
-6. Choose a country and request type, then click **Submit**.
+6. Choose a country, then click the button for the request type you want (e.g. **Downlock**).
 
 ---
 
