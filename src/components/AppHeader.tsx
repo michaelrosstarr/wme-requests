@@ -7,7 +7,6 @@ import { CircleUserRound, LogIn, LogOut, Map, UserCog } from 'lucide-react'
 import { accountLink, useSession } from '@/lib/session'
 import SigningOutOverlay from '@/components/SigningOutOverlay'
 
-// `authOnly` links need access to this app, not just a signed-in WMEKit account.
 const NAV_LINKS = [
   { to: '/', label: 'Home', authOnly: false },
   { to: '/requests', label: 'Requests', authOnly: true },
