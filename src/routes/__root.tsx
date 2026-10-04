@@ -9,11 +9,13 @@ import { ModalsProvider } from '@mantine/modals'
 import { PostHogProvider } from '@posthog/react'
 import { useState } from 'react'
 
+import '@fontsource-variable/rubik'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import appCss from '../styles.css?url'
 
 import { getSessionFn } from '../lib/get-session-fn'
+import { cssVariablesResolver, theme } from '../lib/theme'
 import AppHeader from '../components/AppHeader'
 import Footer from '../components/Footer'
 import CookieConsent from '../components/CookieConsent'
@@ -51,12 +53,14 @@ function RootDocument({ children }: Readonly<{ children: React.ReactNode }>) {
       <body>
         <PostHogRoot>
           <QueryClientProvider client={queryClient}>
-            <MantineProvider defaultColorScheme="auto">
+            <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} defaultColorScheme="auto">
               <ModalsProvider>
                 <Notifications position="top-right" />
-                <AppHeader />
-                {children}
-                <Footer />
+                <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                  <AppHeader />
+                  <main style={{ flex: 1 }}>{children}</main>
+                  <Footer />
+                </div>
                 <CookieConsent />
               </ModalsProvider>
             </MantineProvider>

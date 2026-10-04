@@ -11,3 +11,259 @@ body,
 body {
   margin: 0;
 }
+
+/* Cross-fade between pages of this site on full navigations (e.g. sign-in/out) instead of
+   cutting. Browsers without support just navigate as before. */
+@view-transition {
+  navigation: auto;
+}
+
+/* The wmekit.com look. The palette and `kit-*` utilities down to "Mantine components" are
+   copied from ../wazetools/src/styles.css; keep the two in step. */
+
+/* Palette: a sunny day in light mode, a night drive in dark mode. */
+:root {
+  --kit-ink: #121212;
+  --kit-text: #121212;
+  --kit-muted: #3d3d4a;
+  --kit-sky: #57eeab;
+  --kit-lavender: #d4abff;
+  --kit-blue: #3bcdfd;
+  --kit-ground: #fbe782;
+  --kit-yellow: #ffcd1f;
+  --kit-red: #ff6b6b;
+  --kit-orange: #ff8a4c;
+  --kit-green: #2bc77a;
+  --kit-cloud: #ffffff;
+  --kit-window: #ffffff;
+  --kit-light: #ffe066;
+  --kit-card: #ffffff;
+  --kit-shadow: #121212;
+  --kit-road: #8d92a3;
+  --kit-dash: #ffffff;
+  --kit-grid: rgb(0 0 0 / 7%);
+}
+
+[data-mantine-color-scheme='dark'] {
+  --kit-ink: #05060c;
+  --kit-text: #f3f1ff;
+  --kit-muted: #b9b6cf;
+  --kit-sky: #16204a;
+  --kit-lavender: #5a46a0;
+  --kit-blue: #1c6a92;
+  --kit-ground: #23233a;
+  --kit-yellow: #f2b90f;
+  --kit-red: #e2575a;
+  --kit-orange: #e57a3f;
+  --kit-green: #1f9e60;
+  --kit-cloud: #39406b;
+  --kit-window: #9fb3ff;
+  --kit-light: #fff3a3;
+  --kit-card: #2e2e4a;
+  --kit-shadow: #05060c;
+  --kit-road: #464a66;
+  --kit-dash: #ffd84d;
+  --kit-grid: rgb(255 255 255 / 5%);
+}
+
+/* `:root` so it beats Mantine's own body rule whichever stylesheet loads first. */
+:root body {
+  background: var(--kit-ground);
+  color: var(--kit-text);
+}
+
+/* Sky (the header) */
+.kit-sky {
+  position: relative;
+  overflow: hidden;
+  /* Faint map grid, like the editor's tiles */
+  background:
+    linear-gradient(to right, var(--kit-grid) 1px, transparent 1px) center / 56px 56px,
+    linear-gradient(to bottom, var(--kit-grid) 1px, transparent 1px) center / 56px 56px,
+    var(--kit-sky);
+}
+
+/* Type */
+.kit-wordmark {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.kit-muted {
+  color: var(--kit-muted);
+}
+
+.kit-pill {
+  display: inline-block;
+  padding: 4px 14px;
+  border: 2.5px solid var(--kit-ink);
+  border-radius: 999px;
+  background: var(--kit-card);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.kit-rule {
+  border-top: 2.5px solid var(--kit-ink);
+}
+
+/* Chunky outlined things with a hard shadow */
+.kit-chunky {
+  border: 2.5px solid var(--kit-ink) !important;
+  background: var(--kit-fill, var(--kit-card)) !important;
+  color: var(--kit-text) !important;
+  box-shadow: 4px 4px 0 var(--kit-shadow);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kit-chunky:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--kit-shadow);
+}
+
+.kit-chunky:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--kit-shadow);
+}
+
+.kit-chunky:focus-visible {
+  outline: 3px solid var(--kit-yellow);
+  outline-offset: 3px;
+}
+
+.kit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.kit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 2.5px solid var(--kit-ink);
+  border-radius: 50%;
+  color: var(--kit-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kit-chunky,
+  .kit-btn {
+    transition: none;
+  }
+}
+
+/* --- Mantine components (classNames set in src/lib/theme.ts) ---
+   Selectors are doubled so they beat Mantine's single-class rules whichever stylesheet loads last. */
+
+.kit-paper.kit-paper {
+  border: 2.5px solid var(--kit-ink);
+  /* Card's dark-mode background is Mantine's dark-6, the colour of inputs; cards are always --kit-card. */
+  background-color: var(--kit-card);
+  border-radius: 20px;
+  box-shadow: 6px 6px 0 var(--kit-shadow);
+}
+
+/* Cards inside cards ("Your apps" tiles) */
+.kit-paper .kit-paper.kit-paper {
+  border-radius: 14px;
+  box-shadow: 4px 4px 0 var(--kit-shadow);
+}
+
+/* Drawer content is a Paper too, but sits flush against the edge of the screen. */
+.kit-paper.kit-drawer {
+  border: none;
+  border-left: 2.5px solid var(--kit-ink);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.kit-btn.kit-btn:where(:not([data-variant='subtle'], [data-variant='transparent'])) {
+  border: 2.5px solid var(--kit-ink);
+  border-radius: 999px;
+  font-weight: 700;
+  box-shadow: 4px 4px 0 var(--kit-shadow);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kit-btn.kit-btn:where(:not([data-variant='subtle'], [data-variant='transparent'], [data-disabled], :disabled, [data-loading])):hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--kit-shadow);
+}
+
+.kit-btn.kit-btn:where(:not([data-variant='subtle'], [data-variant='transparent'], [data-disabled], :disabled, [data-loading])):active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--kit-shadow);
+}
+
+.kit-btn.kit-btn:where([data-disabled], :disabled) {
+  box-shadow: none;
+}
+
+.kit-btn.kit-btn:focus-visible {
+  outline: 3px solid var(--kit-yellow);
+  outline-offset: 3px;
+}
+
+.kit-btn.kit-btn:where([data-variant='subtle'], [data-variant='transparent']) {
+  font-weight: 600;
+}
+
+.kit-input.kit-input {
+  border-width: 2.5px;
+  border-radius: 12px;
+}
+
+.kit-input.kit-input:where(:not([data-error])) {
+  border-color: var(--kit-ink);
+}
+
+.kit-input.kit-input:focus,
+.kit-input.kit-input:focus-within {
+  outline: 3px solid var(--kit-yellow);
+  outline-offset: 1px;
+}
+
+/* Menu / Select dropdowns and notifications */
+.kit-pop.kit-pop {
+  border: 2.5px solid var(--kit-ink);
+  border-radius: 14px;
+  box-shadow: 4px 4px 0 var(--kit-shadow);
+}
+
+.kit-tag.kit-tag {
+  border: 2px solid var(--kit-ink);
+  font-weight: 700;
+}
+
+.kit-sky-header {
+  border-bottom: 2.5px solid var(--kit-ink);
+}
+
+.kit-burger.kit-burger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+/* Yellow stays bright in dark mode, so it keeps dark text. */
+.kit-chunky[style*='kit-yellow'] {
+  color: var(--kit-ink) !important;
+}

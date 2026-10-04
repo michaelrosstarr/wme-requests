@@ -1,11 +1,12 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ActionIcon, Anchor, Burger, Button, Container, Divider, Drawer, Group, Menu, Stack, Text, Title } from '@mantine/core'
+import { Anchor, Burger, Button, Container, Divider, Drawer, Group, Menu, Stack, Text } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { usePostHog } from '@posthog/react'
 import { useEffect, useState } from 'react'
-import { CircleUserRound, LogIn, LogOut, Map, UserCog } from 'lucide-react'
+import { CircleUserRound, LogIn, LogOut, UserCog } from 'lucide-react'
 import { accountLink, useSession } from '@/lib/session'
 import SigningOutOverlay from '@/components/SigningOutOverlay'
+import { ColorSchemeToggle, Wordmark } from '@/components/Brand'
 
 const NAV_LINKS = [
   { to: '/', label: 'Home', authOnly: false },
@@ -14,6 +15,9 @@ const NAV_LINKS = [
   { to: '/reports', label: 'Reports', authOnly: true },
   { to: '/help', label: 'Help', authOnly: false },
 ] as const
+
+// The current page's header button is filled yellow.
+const ACTIVE = { '--kit-fill': 'var(--kit-yellow)' } as React.CSSProperties
 
 export default function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -46,119 +50,127 @@ export default function AppHeader() {
   }
 
   return (
-    <Container size="xl" component="header" py="md">
-      <SigningOutOverlay visible={signingOut} />
-      <Group justify="space-between" wrap="nowrap">
-        <Title order={3}>
+    <section className="kit-sky kit-sky-header">
+      <Container size="xl" component="header" py="md" pos="relative">
+        <SigningOutOverlay visible={signingOut} />
+        <Group justify="space-between" wrap="nowrap">
           <Anchor component={Link} to="/" underline="never" c="inherit">
-            <Group gap="xs" wrap="nowrap">
-              <Map size={20} />
-              WME Requests
-            </Group>
+            <Wordmark label="WME Requests" />
           </Anchor>
-        </Title>
 
-        <Group gap="xs" visibleFrom="sm">
-          {visibleLinks.map((link) => (
-            <Button key={link.to} component={Link} to={link.to} variant={pathname === link.to ? 'filled' : 'subtle'}>
-              {link.label}
-            </Button>
-          ))}
-          {session ? (
-            <Menu position="bottom-end" width={220} withinPortal>
-              <Menu.Target>
-                <ActionIcon
-                  variant="subtle"
-                  size="lg"
-                  radius="xl"
-                  aria-label="Profile menu"
+          <Group gap="sm" wrap="nowrap">
+            <ColorSchemeToggle />
+            <Group gap="sm" wrap="nowrap" visibleFrom="sm">
+              {visibleLinks.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="kit-chunky kit-button"
+                  style={pathname === link.to ? ACTIVE : undefined}
                 >
-                  <CircleUserRound size={22} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>
-                  <Text size="sm" fw={500} c="bright" truncate>
-                    {session.user.name}
-                  </Text>
-                  <Text size="xs" c="dimmed" truncate>
-                    {session.user.email}
-                  </Text>
-                </Menu.Label>
-                <Menu.Divider />
-                <Menu.Item component="a" href={accountLink(authUrl, '/account')} leftSection={<UserCog size={14} />}>
-                  WMEKit account
-                </Menu.Item>
-                <Menu.Item leftSection={<LogOut size={14} />} onClick={handleSignOut}>
-                  Sign out
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          ) : (
-            <Button component={Link} to="/login" variant="default" leftSection={<LogIn size={14} />}>
-              Sign in
-            </Button>
-          )}
+                  {link.label}
+                </Link>
+              ))}
+              {session ? (
+                <Menu position="bottom-end" width={220} withinPortal>
+                  <Menu.Target>
+                    <button type="button" className="kit-chunky kit-button">
+                      <CircleUserRound size={18} />
+                      Account
+                    </button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label>
+                      <Text size="sm" fw={500} c="bright" truncate>
+                        {session.user.name}
+                      </Text>
+                      <Text size="xs" c="dimmed" truncate>
+                        {session.user.email}
+                      </Text>
+                    </Menu.Label>
+                    <Menu.Divider />
+                    <Menu.Item component="a" href={accountLink(authUrl, '/account')} leftSection={<UserCog size={14} />}>
+                      WMEKit account
+                    </Menu.Item>
+                    <Menu.Item leftSection={<LogOut size={14} />} onClick={handleSignOut}>
+                      Sign out
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              ) : (
+                <Link to="/login" search={{ redirect: undefined }} className="kit-chunky kit-button">
+                  <LogIn size={18} />
+                  Sign in
+                </Link>
+              )}
+            </Group>
+            <Burger
+              hiddenFrom="sm"
+              size="sm"
+              className="kit-chunky kit-burger"
+              opened={drawerOpened}
+              onClick={toggleDrawer}
+              aria-label="Toggle navigation menu"
+            />
+          </Group>
         </Group>
 
-        <Burger hiddenFrom="sm" opened={drawerOpened} onClick={toggleDrawer} aria-label="Toggle navigation menu" />
-      </Group>
-
-      <Drawer
-        opened={drawerOpened}
-        onClose={closeDrawer}
-        hiddenFrom="sm"
-        position="right"
-        size="xs"
-        title="Menu"
-      >
-        <Stack gap="xs">
-          {visibleLinks.map((link) => (
-            <Button
-              key={link.to}
-              component={Link}
-              to={link.to}
-              variant={pathname === link.to ? 'filled' : 'subtle'}
-              fullWidth
-              justify="flex-start"
-              onClick={closeDrawer}
-            >
-              {link.label}
-            </Button>
-          ))}
-          <Divider my={4} />
-          {session ? (
-            <>
+        <Drawer
+          opened={drawerOpened}
+          onClose={closeDrawer}
+          hiddenFrom="sm"
+          position="right"
+          size="xs"
+          title="Menu"
+        >
+          <Stack gap="xs">
+            {visibleLinks.map((link) => (
               <Button
-                component="a"
-                href={accountLink(authUrl, '/account')}
-                variant="subtle"
-                leftSection={<UserCog size={14} />}
+                key={link.to}
+                component={Link}
+                to={link.to}
+                variant={pathname === link.to ? 'filled' : 'subtle'}
                 fullWidth
                 justify="flex-start"
                 onClick={closeDrawer}
               >
-                WMEKit account
+                {link.label}
               </Button>
-              <Button variant="default" leftSection={<LogOut size={14} />} fullWidth justify="flex-start" onClick={handleSignOut}>
-                Sign out
+            ))}
+            <Divider my={4} />
+            {session ? (
+              <>
+                <Button
+                  component="a"
+                  href={accountLink(authUrl, '/account')}
+                  variant="subtle"
+                  leftSection={<UserCog size={14} />}
+                  fullWidth
+                  justify="flex-start"
+                  onClick={closeDrawer}
+                >
+                  WMEKit account
+                </Button>
+                <Button variant="default" leftSection={<LogOut size={14} />} fullWidth justify="flex-start" onClick={handleSignOut}>
+                  Sign out
+                </Button>
+              </>
+            ) : (
+              <Button
+                component={Link}
+                to="/login"
+                variant="default"
+                leftSection={<LogIn size={14} />}
+                fullWidth
+                justify="flex-start"
+                onClick={closeDrawer}
+              >
+                Sign in
               </Button>
-            </>
-          ) : (
-            <Button
-              component={Link}
-              to="/login"
-              variant="default"
-              leftSection={<LogIn size={14} />}
-              fullWidth
-              justify="flex-start"
-              onClick={closeDrawer}
-            >
-              Sign in
-            </Button>
-          )}
-        </Stack>
-      </Drawer>
-    </Container>
+            )}
+          </Stack>
+        </Drawer>
+      </Container>
+    </section>
   )
 }
