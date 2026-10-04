@@ -10,6 +10,9 @@ export const theme = createTheme({
   fontFamily: FONT,
   headings: { fontFamily: FONT, fontWeight: '700' },
   defaultRadius: 'md',
+  // Green, not wmekit.com's yellow. Darker shade in light mode so links stay readable on the yellow ground.
+  primaryColor: 'green',
+  primaryShade: { light: 9, dark: 6 },
   // Mantine draws dark-mode inputs, pills, hovers, borders and disabled states from this scale.
   // Its default is neutral grey; this one is tinted to the site's night palette (--kit-card is
   // #2e2e4a, --kit-ground #23233a) so those parts don't look grey next to the cards.
@@ -21,11 +24,11 @@ export const theme = createTheme({
     Paper: Paper.extend({ classNames: { root: 'kit-paper' } }),
     Button: Button.extend({
       classNames: { root: 'kit-btn' },
-      // Plain buttons take the site's colours; ones given a `color` (red "Delete" etc.) keep it.
+      // Plain buttons take the site's colours (green filled); ones given a `color` (red "Delete" etc.) keep it.
       vars: (_theme, { variant = 'filled', color }) => {
         if (color) return { root: {} }
         if (variant === 'filled') {
-          return { root: { '--button-bg': 'var(--kit-yellow)', '--button-hover': 'var(--kit-yellow)', '--button-color': 'var(--kit-ink)' } }
+          return { root: { '--button-bg': 'var(--kit-green)', '--button-hover': 'var(--kit-green)', '--button-color': 'var(--kit-ink)' } }
         }
         if (variant === 'default' || variant === 'light') {
           return { root: { '--button-bg': 'var(--kit-card)', '--button-hover': 'var(--kit-card)', '--button-color': 'var(--kit-text)' } }

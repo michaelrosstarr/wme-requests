@@ -29,7 +29,7 @@ body {
   --kit-sky: #57eeab;
   --kit-lavender: #d4abff;
   --kit-blue: #3bcdfd;
-  --kit-ground: #fbe782;
+  --kit-ground: #f7f2df; /* wmekit.com uses #fbe782; toned down here */
   --kit-yellow: #ffcd1f;
   --kit-red: #ff6b6b;
   --kit-orange: #ff8a4c;
@@ -263,7 +263,8 @@ body {
   border-radius: 50%;
 }
 
-/* Yellow stays bright in dark mode, so it keeps dark text. */
-.kit-chunky[style*='kit-yellow'] {
+/* Yellow and green stay bright in dark mode, so they keep dark text. */
+.kit-chunky[style*='kit-yellow'],
+.kit-chunky[style*='kit-green'] {
   color: var(--kit-ink) !important;
 }

@@ -16,8 +16,8 @@ const NAV_LINKS = [
   { to: '/help', label: 'Help', authOnly: false },
 ] as const
 
-// The current page's header button is filled yellow.
-const ACTIVE = { '--kit-fill': 'var(--kit-yellow)' } as React.CSSProperties
+// The current page's header button is filled green.
+const ACTIVE = { '--kit-fill': 'var(--kit-green)' } as React.CSSProperties
 
 export default function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
