@@ -31,6 +31,8 @@ export interface AccountUser {
   wmeLevel?: number | null
   /** Where they edit (ISO 3166 codes); `subdivision: null` means the whole country. */
   editingAreas?: { country: string; subdivision: string | null }[]
+  /** App ids an admin has blocked this user from on wmeAuth's /admin/users. Absent before the block list. */
+  blockedApps?: string[]
 }
 
 /** wmeAuth's RPC methods (see its src/server-entry.ts). Errors arrive as "<status>: <message>". */
@@ -68,7 +70,10 @@ export async function getCentralSession(headers: Headers): Promise<{ user: Centr
   if (!cookie || !SESSION_COOKIES.some((name) => cookie.includes(name))) return { user: null, setCookies: [] }
   // The binding routes straight to the wmeauth Worker whatever the URL's host; using its real
   // URL just keeps Better Auth (and Vite's host check in dev) happy.
-  const res = await authService().fetch(authUrl('/api/auth/get-session'), { headers: { cookie } })
+  // x-wmekit-app: wmeAuth answers null (signed out) for users an admin has blocked from this app.
+  const res = await authService().fetch(authUrl('/api/auth/get-session'), {
+    headers: { cookie, 'x-wmekit-app': 'requests' },
+  })
   const setCookies = res.headers.getSetCookie()
   if (!res.ok) {
     console.error(`get-session over AUTH binding failed: ${res.status}`)
