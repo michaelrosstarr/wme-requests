@@ -5,6 +5,7 @@ interface __BaseEnv_Env {
 	SCREENSHOTS: R2Bucket;
 	DB: D1Database;
 	ALLOWED_ORIGINS: "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wmekit.com,https://requests.wazetools.com";
+	REQUIRE_PAGE_ORIGIN_HEADER: "false";
 	WEB_PUSH_VAPID_PUBLIC_KEY: "BI7TZK5g2JTEXxFtmOy3KiCWs1rLvNAzsCNOWK_l3mb_jiyZrAKAyZOsYNuu0zIFJQxUXYoHIlTxz8R7v6ZrfR4";
 	BETTER_AUTH_SECRET: string;
 	BETTER_AUTH_URL: string;
@@ -28,7 +29,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ALLOWED_ORIGINS" | "WEB_PUSH_VAPID_PUBLIC_KEY" | "BETTER_AUTH_SECRET" | "BETTER_AUTH_URL" | "CHANNEL_CREDENTIALS_KEY" | "WEB_PUSH_VAPID_PRIVATE_JWK" | "WEB_PUSH_CONTACT" | "DISCORD_CLIENT_SECRET" | "TURNSTILE_SECRET_KEY" | "APP_URL" | "AUTH_URL">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ALLOWED_ORIGINS" | "REQUIRE_PAGE_ORIGIN_HEADER" | "WEB_PUSH_VAPID_PUBLIC_KEY" | "BETTER_AUTH_SECRET" | "BETTER_AUTH_URL" | "CHANNEL_CREDENTIALS_KEY" | "WEB_PUSH_VAPID_PRIVATE_JWK" | "WEB_PUSH_CONTACT" | "DISCORD_CLIENT_SECRET" | "TURNSTILE_SECRET_KEY" | "APP_URL" | "AUTH_URL">> {}
 }
 
 // Begin runtime types

@@ -28,6 +28,11 @@
 		// requests.wazetools.com is the pre-move host: still attached (custom domains are set in the
 		// dashboard) and still serving /api, so it stays allowed.
 		"ALLOWED_ORIGINS": "https://waze.com,https://www.waze.com,https://beta.waze.com,https://requests.wmekit.com,https://requests.wazetools.com",
+		// "true" to make POST /api/requests and /api/screenshots refuse userscript-manager requests
+		// that don't name a Waze page in X-WME-Requests-Origin (see requireWazeOrigin in
+		// src/lib/http.ts). The userscript sends it from v2.9.0; turn this on once older installs
+		// have updated, since they'd be refused. Requests from other websites are refused either way.
+		"REQUIRE_PAGE_ORIGIN_HEADER": "false",
 		// This app's own origin, for absolute ?redirect= URLs back from the account service and
 		// the link in "set your password" emails sent when an admin adds someone.
 		"APP_URL": "https://requests.wmekit.com",

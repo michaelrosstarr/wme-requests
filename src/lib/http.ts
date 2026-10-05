@@ -47,14 +47,18 @@ export const PAGE_ORIGIN_HEADER = 'X-WME-Requests-Origin'
 const EXTENSION_ORIGIN = /^[a-z-]+-extension:\/\//
 
 /**
- * A 403 unless the request comes from a Waze page: a browser-set Origin must be a Waze origin,
- * and a request from a userscript manager (extension Origin, or none) must name one in
- * PAGE_ORIGIN_HEADER. This stops other websites submitting through a visitor's browser, and
- * casual use of the API outside WME; a non-browser client can still send any headers it likes.
+ * A 403 unless the request comes from a Waze page. A browser-set Origin must be a Waze origin,
+ * which stops other websites submitting through a visitor's browser. A request from a userscript
+ * manager (extension Origin, or none) is let through, unless REQUIRE_PAGE_ORIGIN_HEADER is "true"
+ * (wrangler.jsonc): then it must name a Waze origin in PAGE_ORIGIN_HEADER, which also stops casual
+ * use of the API outside WME. A non-browser client can still send any headers it likes.
  */
 export function requireWazeOrigin(request: Request) {
   const origin = request.headers.get('Origin')
-  const pageOrigin = !origin || EXTENSION_ORIGIN.test(origin) ? request.headers.get(PAGE_ORIGIN_HEADER) : origin
+  let pageOrigin: string | null
+  if (origin && !EXTENSION_ORIGIN.test(origin)) pageOrigin = origin
+  else if (String(env.REQUIRE_PAGE_ORIGIN_HEADER) === 'true') pageOrigin = request.headers.get(PAGE_ORIGIN_HEADER)
+  else return null
   if (pageOrigin && WAZE_ORIGINS.includes(pageOrigin)) return null
   return err('Requests can only be submitted from the Waze Map Editor', 403, { code: 'wrong_origin' })
 }
