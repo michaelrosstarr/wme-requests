@@ -1,7 +1,7 @@
 import { dbAll, dbFirst, dbRun } from './db'
 import { json, err } from './http'
 import { getCentralSession } from './central-auth'
-import { canAccessCountry, getUserAccess, type UserAccess } from './access'
+import { getUserAccess, type UserAccess } from './access'
 
 export interface Country {
   id: number
@@ -52,9 +52,9 @@ export async function updateCountry(
   id: number,
   body: { name?: string; code?: string },
 ) {
+  if (!access.isSuperAdmin) return err('Only superadmins can change a country', 403)
   const existing = await dbFirst<Country>('SELECT * FROM countries WHERE id = ?', [id])
   if (!existing) return err('Country not found', 404)
-  if (!canAccessCountry(access, id)) return err('Country not found', 404)
   const name = body.name?.trim() || existing.name
   const code = body.code?.trim() ? body.code.trim().toUpperCase() : existing.code
   try {

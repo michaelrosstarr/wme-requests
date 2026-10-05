@@ -94,8 +94,8 @@ access", which also creates your local user row), then grant yourself global acc
 wrangler d1 execute wme-requests --remote --command "INSERT INTO user_access (user_id, is_global) SELECT id, 1 FROM \"user\" WHERE email = 'you@example.com'"
 ```
 
-Deleting a country (and with it its channels and requests) needs **superadmin**, which the app
-never sets or clears. Grant it in the database (`is_superadmin = 0` revokes it):
+Changing a country's name or code, or deleting it (and with it its channels and requests), needs
+**superadmin**, which the app never sets or clears. Grant it in the database (`is_superadmin = 0` revokes it):
 
 ```bash
 wrangler d1 execute wme-requests --remote --command "UPDATE user_access SET is_superadmin = 1 WHERE user_id = (SELECT id FROM \"user\" WHERE email = 'you@example.com')"
@@ -152,8 +152,8 @@ All endpoints are under `/api/`. The dashboard and userscript both talk to this 
 | GET | `/api/countries` | List all countries |
 | POST | `/api/countries` | Create a country `{ name, code }` |
 | GET | `/api/countries/:id` | Get a country |
-| PUT | `/api/countries/:id` | Update `{ name?, code? }` |
-| DELETE | `/api/countries/:id` | Delete (cascades to channels & requests) |
+| PUT | `/api/countries/:id` | Update `{ name?, code? }` (superadmin only) |
+| DELETE | `/api/countries/:id` | Delete (cascades to channels & requests; superadmin only) |
 
 ### Notification Channels
 

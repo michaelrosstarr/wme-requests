@@ -84,7 +84,7 @@ This applies everything under [`migrations/`](migrations/):
 | `0023_two_factor.sql` | `user.twoFactorEnabled`, `twoFactor` and `securityKey` — two-factor authentication (email codes, authenticator app, security keys, backup codes) |
 | `0024_security_events.sql` | `security_events` — per-user security log (sign-ins, failed sign-ins, sign-in method and 2FA changes) shown on the Account page |
 | `0025_central_auth.sql` | `user_access` (who may use this app, `is_global`, `feed_token`), copied from `user` — sign-in moved to the WMEKit account service, and Better Auth's tables (0002, 0022–0024) are no longer used |
-| `0026_superadmin.sql` | `user_access.is_superadmin` — the only level allowed to delete countries; set in the database only (see step 12) |
+| `0026_superadmin.sql` | `user_access.is_superadmin` — the only level allowed to edit (name, code) or delete countries; set in the database only (see step 12) |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -240,7 +240,8 @@ for access", which also creates your local user row. Then grant yourself global 
 wrangler d1 execute wme-requests --remote --command "INSERT INTO user_access (user_id, is_global) SELECT id, 1 FROM \"user\" WHERE email = 'you@example.com'"
 ```
 
-Deleting a country (which also deletes its channels and requests) needs **superadmin**. The app
+Changing a country's name or code, or deleting it (which also deletes its channels and
+requests), needs **superadmin**. The app
 never sets or clears it, and won't let anyone remove a superadmin's access from Admin → Users;
 grant it (or revoke it with `is_superadmin = 0`) in the database:
 

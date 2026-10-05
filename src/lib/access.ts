@@ -3,7 +3,7 @@ import { dbAll, dbFirst } from './db'
 export interface UserAccess {
   userId: string
   isGlobal: boolean
-  // Set only in the database (see migrations/0026_superadmin.sql); needed to delete countries.
+  // Set only in the database (see migrations/0026_superadmin.sql); needed to rename or delete countries.
   isSuperAdmin: boolean
   countryIds: number[]
 }

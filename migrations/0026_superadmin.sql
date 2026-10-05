@@ -1,5 +1,5 @@
--- Superadmin: the only level allowed to delete a country (which also deletes its channels and
--- requests). Apply with: wrangler d1 migrations apply wme-requests
+-- Superadmin: the only level allowed to change a country's name and code, or delete a country
+-- (which also deletes its channels and requests). Apply with: wrangler d1 migrations apply wme-requests
 --
 -- The app never sets or clears is_superadmin: no API, modal or form writes it, and removing a
 -- superadmin's access from Admin → Users is refused. Grant or revoke it in the database only:

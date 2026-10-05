@@ -214,14 +214,16 @@ function Admin() {
                     >
                       Regions
                     </Button>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      leftSection={<Pencil size={14} />}
-                      onClick={() => setCountryModal({ opened: true, country: c })}
-                    >
-                      Edit
-                    </Button>
+                    {me?.isSuperAdmin && (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        leftSection={<Pencil size={14} />}
+                        onClick={() => setCountryModal({ opened: true, country: c })}
+                      >
+                        Edit
+                      </Button>
+                    )}
                     {me?.isSuperAdmin && (
                       <Button
                         size="xs"
