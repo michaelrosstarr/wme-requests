@@ -222,7 +222,7 @@ const SECTIONS: HelpSection[] = [
 
 function Help() {
   return (
-    <Container size="md" pb="xl">
+    <Container size="md" py="xl">
       <Title order={3} mb={4}>
         Notification Channel Setup
       </Title>

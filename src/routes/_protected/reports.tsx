@@ -58,7 +58,7 @@ function Reports() {
   const empty = !isPending && !isError && !rows.length
 
   return (
-    <Container size="xl" pb="xl">
+    <Container size="xl" py="xl">
       <Stack gap="md">
         <div>
           <Title order={3}>Reports</Title>

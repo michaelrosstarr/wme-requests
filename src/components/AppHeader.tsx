@@ -59,7 +59,6 @@ export default function AppHeader() {
           </Anchor>
 
           <Group gap="sm" wrap="nowrap">
-            <ColorSchemeToggle />
             <Group gap="sm" wrap="nowrap" visibleFrom="sm">
               {visibleLinks.map((link) => (
                 <Link
@@ -71,6 +70,7 @@ export default function AppHeader() {
                   {link.label}
                 </Link>
               ))}
+              <ColorSchemeToggle />
               {session ? (
                 <Menu position="bottom-end" width={220} withinPortal>
                   <Menu.Target>

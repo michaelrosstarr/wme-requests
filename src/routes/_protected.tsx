@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { Button, Center, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { LogOut, ShieldAlert } from 'lucide-react'
-import { getSessionFn } from '@/lib/get-session-fn'
-import { accountLink } from '@/lib/session'
+import { accountLink, getSession } from '@/lib/session'
 import SigningOutOverlay from '@/components/SigningOutOverlay'
 
 export const Route = createFileRoute('/_protected')({
-  beforeLoad: async ({ location }) => {
-    const { session, authUrl, appUrl } = await getSessionFn()
+  beforeLoad: async ({ context, location }) => {
+    const { session, authUrl, appUrl } = await getSession(context.queryClient)
     if (!session) {
       // /login hands off to the WMEKit account service and brings them back here.
       throw redirect({ to: '/login', search: { redirect: location.href } })

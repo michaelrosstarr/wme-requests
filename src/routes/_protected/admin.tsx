@@ -182,7 +182,7 @@ function Admin() {
   }
 
   return (
-    <Container size="xl" pb="xl">
+    <Container size="xl" py="xl">
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card withBorder radius="md" p="md">
           <Group justify="space-between" mb="sm">

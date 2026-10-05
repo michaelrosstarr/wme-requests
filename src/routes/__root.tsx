@@ -1,26 +1,25 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 // Side-effect type import: pulls in TanStack Start's ambient module augmentation that adds
 // `server.handlers` to `createFileRoute` options, used by the API routes under routes/api/.
 import type {} from '@tanstack/react-start'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MantineProvider, mantineHtmlProps, ColorSchemeScript } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { ModalsProvider } from '@mantine/modals'
 import { PostHogProvider } from '@posthog/react'
-import { useState } from 'react'
 
 import '@fontsource-variable/rubik'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import appCss from '../styles.css?url'
 
-import { getSessionFn } from '../lib/get-session-fn'
+import { getSession } from '../lib/session'
 import { cssVariablesResolver, theme } from '../lib/theme'
 import AppHeader from '../components/AppHeader'
 import Footer from '../components/Footer'
 import CookieConsent from '../components/CookieConsent'
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -36,13 +35,13 @@ export const Route = createRootRoute({
   // useSession) is right on first paint instead of showing "Sign in" until the browser has asked.
   // Not re-run on client navigations: useSession's query keeps it fresh from there. A failure
   // here only means starting signed-out-looking, as before, not an error page.
-  loader: () => getSessionFn().catch(() => null),
+  loader: ({ context }) => getSession(context.queryClient).catch(() => null),
   shouldReload: false,
   shellComponent: RootDocument,
 })
 
 function RootDocument({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [queryClient] = useState(() => new QueryClient())
+  const { queryClient } = Route.useRouteContext()
 
   return (
     <html lang="en" {...mantineHtmlProps}>

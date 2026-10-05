@@ -219,7 +219,7 @@ function Dashboard() {
   }
 
   return (
-    <Container size="xl" pb="xl">
+    <Container size="xl" py="xl">
       <Paper withBorder p="md" radius="md" mb="md">
         <Title order={4} mb="sm">
           Filters
