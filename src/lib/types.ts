@@ -103,6 +103,15 @@ export interface AdminUser {
   countryIds: number[]
 }
 
+export interface BlockedSubmitter {
+  id: number
+  username: string
+  reason: string | null
+  blocked_by: string | null
+  blocked_by_name: string | null
+  created_at: string
+}
+
 export interface Me {
   userId: string
   isGlobal: boolean

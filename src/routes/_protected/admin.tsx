@@ -1,9 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Alert, Badge, Button, Card, Center, Container, Group, Loader, SimpleGrid, Select, Stack, Table, Text, Title } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
-import { Globe, Info, KeyRound, MapPin, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
 import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Center,
+  Container,
+  Group,
+  Loader,
+  SimpleGrid,
+  Select,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { Ban, Globe, Info, KeyRound, MapPin, Pencil, Plus, Send, Trash2, UserPlus } from 'lucide-react'
+import {
+  useBlockedSubmitters,
   useChannels,
   useCountries,
   useCredentials,
@@ -15,15 +31,17 @@ import {
   useRemoveUserAccess,
   useResetUserPassword,
   useTestChannel,
+  useUnblockSubmitter,
   useUsers,
 } from '@/lib/queries'
 import { CredentialTypeBadge, EventTypeBadge, PlatformBadge } from '@/lib/labels'
 import { CUSTOM_PREFIX_VARIABLES } from '@/lib/templateVariables'
-import type { AdminUser, Channel, Country, Credential } from '@/lib/types'
+import type { AdminUser, BlockedSubmitter, Channel, Country, Credential } from '@/lib/types'
 import CountryFormModal from '@/components/CountryFormModal'
 import ChannelFormModal from '@/components/ChannelFormModal'
 import RegionsModal from '@/components/RegionsModal'
 import InviteUserModal from '@/components/InviteUserModal'
+import BlockSubmitterModal from '@/components/BlockSubmitterModal'
 import UserAccessModal from '@/components/UserAccessModal'
 import CredentialsModal from '@/components/CredentialsModal'
 import { confirmDialog } from '@/lib/dialogs'
@@ -36,17 +54,26 @@ function Admin() {
   const countries = countriesQuery.data ?? []
   const countryLabel = (id: number) => countries.find((c) => c.id === id)?.code ?? `#${id}`
 
-  const [countryModal, setCountryModal] = useState<{ opened: boolean; country: Country | null }>({
+  const [countryModal, setCountryModal] = useState<{
+    opened: boolean
+    country: Country | null
+  }>({
     opened: false,
     country: null,
   })
-  const [regionsModal, setRegionsModal] = useState<{ opened: boolean; country: Country | null }>({
+  const [regionsModal, setRegionsModal] = useState<{
+    opened: boolean
+    country: Country | null
+  }>({
     opened: false,
     country: null,
   })
   const [selectedCountryId, setSelectedCountryId] = useState<string | null>(null)
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
-  const [channelModal, setChannelModal] = useState<{ opened: boolean; channel: Channel | null }>({
+  const [channelModal, setChannelModal] = useState<{
+    opened: boolean
+    channel: Channel | null
+  }>({
     opened: false,
     channel: null,
   })
@@ -69,12 +96,42 @@ function Admin() {
   const usersQuery = useUsers()
   const users = usersQuery.data ?? []
   const [inviteModal, setInviteModal] = useState(false)
-  const [accessModal, setAccessModal] = useState<{ opened: boolean; user: AdminUser | null }>({
+  const [accessModal, setAccessModal] = useState<{
+    opened: boolean
+    user: AdminUser | null
+  }>({
     opened: false,
     user: null,
   })
   const resetUserPassword = useResetUserPassword()
   const removeUserAccess = useRemoveUserAccess()
+
+  const blockedQuery = useBlockedSubmitters(!!me?.isGlobal)
+  const blocked = blockedQuery.data ?? []
+  const [blockModal, setBlockModal] = useState(false)
+  const unblockSubmitter = useUnblockSubmitter()
+
+  async function handleUnblock(b: BlockedSubmitter) {
+    const ok = await confirmDialog({
+      title: 'Unblock submitter',
+      message: `${b.username} will be able to submit requests again.`,
+      confirmLabel: 'Unblock',
+    })
+    if (!ok) return
+    unblockSubmitter.mutate(b.id, {
+      onSuccess: () =>
+        notifications.show({
+          color: 'green',
+          message: `Unblocked ${b.username}.`,
+        }),
+      onError: (e) =>
+        notifications.show({
+          color: 'red',
+          title: 'Could not unblock',
+          message: (e as Error).message,
+        }),
+    })
+  }
 
   const credentialsQuery = useCredentials()
   const credentials = credentialsQuery.data ?? []
@@ -100,7 +157,12 @@ function Admin() {
     })
     if (!ok) return
     deleteCredential.mutate(id, {
-      onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
+      onError: (e) =>
+        notifications.show({
+          color: 'red',
+          title: 'Delete failed',
+          message: (e as Error).message,
+        }),
     })
   }
 
@@ -113,7 +175,12 @@ function Admin() {
     })
     if (!ok) return
     deleteCountry.mutate(id, {
-      onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
+      onError: (e) =>
+        notifications.show({
+          color: 'red',
+          title: 'Delete failed',
+          message: (e as Error).message,
+        }),
     })
   }
 
@@ -123,7 +190,10 @@ function Admin() {
       return
     }
     if (!selectedCountryId) {
-      notifications.show({ color: 'yellow', message: 'Select a country first.' })
+      notifications.show({
+        color: 'yellow',
+        message: 'Select a country first.',
+      })
       return
     }
     setChannelModal({ opened: true, channel: null })
@@ -141,16 +211,29 @@ function Admin() {
     deleteChannel.mutate(
       { id, countryId: selectedCountryId },
       {
-        onError: (e) => notifications.show({ color: 'red', title: 'Delete failed', message: (e as Error).message }),
+        onError: (e) =>
+          notifications.show({
+            color: 'red',
+            title: 'Delete failed',
+            message: (e as Error).message,
+          }),
       },
     )
   }
 
   function handleTestChannel(id: number) {
     testChannel.mutate(id, {
-      onSuccess: () => notifications.show({ color: 'green', message: 'Test notification sent.' }),
+      onSuccess: () =>
+        notifications.show({
+          color: 'green',
+          message: 'Test notification sent.',
+        }),
       onError: (e) =>
-        notifications.show({ color: 'red', title: 'Test notification failed', message: (e as Error).message }),
+        notifications.show({
+          color: 'red',
+          title: 'Test notification failed',
+          message: (e as Error).message,
+        }),
     })
   }
 
@@ -163,8 +246,17 @@ function Admin() {
     })
     if (!ok) return
     removeUserAccess.mutate(u.id, {
-      onSuccess: () => notifications.show({ color: 'green', message: `Removed access for ${u.email}.` }),
-      onError: (e) => notifications.show({ color: 'red', title: 'Could not remove access', message: (e as Error).message }),
+      onSuccess: () =>
+        notifications.show({
+          color: 'green',
+          message: `Removed access for ${u.email}.`,
+        }),
+      onError: (e) =>
+        notifications.show({
+          color: 'red',
+          title: 'Could not remove access',
+          message: (e as Error).message,
+        }),
     })
   }
 
@@ -176,8 +268,17 @@ function Admin() {
     })
     if (!ok) return
     resetUserPassword.mutate(id, {
-      onSuccess: () => notifications.show({ color: 'green', message: `Reset email sent to ${email}.` }),
-      onError: (e) => notifications.show({ color: 'red', title: 'Reset failed', message: (e as Error).message }),
+      onSuccess: () =>
+        notifications.show({
+          color: 'green',
+          message: `Reset email sent to ${email}.`,
+        }),
+      onError: (e) =>
+        notifications.show({
+          color: 'red',
+          title: 'Reset failed',
+          message: (e as Error).message,
+        }),
     })
   }
 
@@ -188,7 +289,11 @@ function Admin() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Countries</Title>
             {me?.isGlobal && (
-              <Button size="xs" leftSection={<Plus size={14} />} onClick={() => setCountryModal({ opened: true, country: null })}>
+              <Button
+                size="xs"
+                leftSection={<Plus size={14} />}
+                onClick={() => setCountryModal({ opened: true, country: null })}
+              >
                 Add
               </Button>
             )}
@@ -266,15 +371,22 @@ function Admin() {
               </Table.Tbody>
             </Table>
             <Text size="xs" mt={4} c="dimmed">
-              Example: a downlock channel's prefix <code>L{'{lock_level}'}{'{country_code}'}</code> renders{' '}
-              <code>L5ZA</code> for a lock-5 South Africa request.
+              Example: a downlock channel's prefix{' '}
+              <code>
+                L{'{lock_level}'}
+                {'{country_code}'}
+              </code>{' '}
+              renders <code>L5ZA</code> for a lock-5 South Africa request.
             </Text>
           </Alert>
           <Group grow mb="sm" align="flex-end">
             <Select
               label="Country"
               placeholder="Select a country…"
-              data={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` }))}
+              data={countries.map((c) => ({
+                value: String(c.id),
+                label: `${c.name} (${c.code})`,
+              }))}
               value={selectedCountryId}
               onChange={handleSelectCountry}
               clearable
@@ -282,7 +394,10 @@ function Admin() {
             <Select
               label="Region"
               placeholder={selectedCountryId ? 'All (country-wide + regions)' : 'Select a country first'}
-              data={regionsForSelectedCountry.map((r) => ({ value: String(r.id), label: `${r.name} (${r.code})` }))}
+              data={regionsForSelectedCountry.map((r) => ({
+                value: String(r.id),
+                label: `${r.name} (${r.code})`,
+              }))}
               value={selectedRegionId}
               onChange={setSelectedRegionId}
               disabled={!selectedCountryId}
@@ -354,8 +469,8 @@ function Admin() {
           <Title order={4}>Credentials</Title>
         </Group>
         <Text size="sm" c="dimmed" mb="sm">
-          Reusable, encrypted credentials that notification channels reference instead of embedding a secret
-          directly. Google service accounts are a shared pool; email credentials are your own (bring your own key).
+          Reusable, encrypted credentials that notification channels reference instead of embedding a secret directly.
+          Google service accounts are a shared pool; email credentials are your own (bring your own key).
         </Text>
 
         <Group justify="space-between" mb="xs">
@@ -367,7 +482,13 @@ function Admin() {
               size="xs"
               variant="light"
               leftSection={<Plus size={14} />}
-              onClick={() => setCredentialModal({ opened: true, kind: 'google', credential: null })}
+              onClick={() =>
+                setCredentialModal({
+                  opened: true,
+                  kind: 'google',
+                  credential: null,
+                })
+              }
             >
               Add
             </Button>
@@ -398,7 +519,13 @@ function Admin() {
                       size="xs"
                       variant="light"
                       leftSection={<Pencil size={14} />}
-                      onClick={() => setCredentialModal({ opened: true, kind: 'google', credential: c })}
+                      onClick={() =>
+                        setCredentialModal({
+                          opened: true,
+                          kind: 'google',
+                          credential: c,
+                        })
+                      }
                     >
                       Edit
                     </Button>
@@ -426,7 +553,13 @@ function Admin() {
             size="xs"
             variant="light"
             leftSection={<Plus size={14} />}
-            onClick={() => setCredentialModal({ opened: true, kind: 'email', credential: null })}
+            onClick={() =>
+              setCredentialModal({
+                opened: true,
+                kind: 'email',
+                credential: null,
+              })
+            }
           >
             Add
           </Button>
@@ -457,7 +590,13 @@ function Admin() {
                       size="xs"
                       variant="light"
                       leftSection={<Pencil size={14} />}
-                      onClick={() => setCredentialModal({ opened: true, kind: 'email', credential: c })}
+                      onClick={() =>
+                        setCredentialModal({
+                          opened: true,
+                          kind: 'email',
+                          credential: c,
+                        })
+                      }
                     >
                       Edit
                     </Button>
@@ -508,9 +647,7 @@ function Admin() {
                         </Badge>
                       ) : (
                         <Badge size="xs" color="gray" variant="light">
-                          {u.countryIds.length
-                            ? u.countryIds.map(countryLabel).join(', ')
-                            : 'No countries assigned'}
+                          {u.countryIds.length ? u.countryIds.map(countryLabel).join(', ') : 'No countries assigned'}
                         </Badge>
                       )}
                     </Group>
@@ -556,6 +693,53 @@ function Admin() {
         </Card>
       )}
 
+      {me?.isGlobal && (
+        <Card withBorder radius="md" p="md" mt="md">
+          <Group justify="space-between" mb="sm">
+            <Title order={4}>Blocked Submitters</Title>
+            <Button
+              size="xs"
+              color="red"
+              variant="light"
+              leftSection={<Ban size={14} />}
+              onClick={() => setBlockModal(true)}
+            >
+              Block username
+            </Button>
+          </Group>
+          <Text size="sm" c="dimmed" mb="sm">
+            Waze usernames whose requests are refused, in every country. You can also block someone from the Reports
+            page.
+          </Text>
+          <Stack gap="xs">
+            {blockedQuery.isPending && <CardListLoader />}
+            {!blockedQuery.isPending && !blocked.length && <Text c="dimmed">No one is blocked.</Text>}
+            {blocked.map((b) => (
+              <Card key={b.id} withBorder radius="sm" p="xs">
+                <Group justify="space-between" wrap="nowrap">
+                  <div>
+                    <Text fw={600}>{b.username}</Text>
+                    {b.reason && <Text size="sm">{b.reason}</Text>}
+                    <Text size="xs" c="dimmed">
+                      Blocked {new Date(b.created_at).toLocaleDateString()}
+                      {b.blocked_by_name ? ` by ${b.blocked_by_name}` : ''}
+                    </Text>
+                  </div>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    loading={unblockSubmitter.isPending && unblockSubmitter.variables === b.id}
+                    onClick={() => handleUnblock(b)}
+                  >
+                    Unblock
+                  </Button>
+                </Group>
+              </Card>
+            ))}
+          </Stack>
+        </Card>
+      )}
+
       <CredentialsModal
         opened={credentialModal.opened}
         kind={credentialModal.kind}
@@ -581,6 +765,7 @@ function Admin() {
         />
       )}
       <InviteUserModal opened={inviteModal} onClose={() => setInviteModal(false)} />
+      <BlockSubmitterModal opened={blockModal} username={null} onClose={() => setBlockModal(false)} />
       <UserAccessModal
         opened={accessModal.opened}
         user={accessModal.user}

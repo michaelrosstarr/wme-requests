@@ -3,6 +3,7 @@ import { dbAll, dbFirst, dbRun, REQUEST_TYPES, STATUSES, type RequestType, type 
 import { json, err } from './http'
 import { fireNotifications, type RequestRow } from './notifications'
 import { canAccessCountry, countryScopeSQL, type UserAccess } from './access'
+import { isSubmitterBlocked } from './blocks'
 
 // Request types where lock_level is meaningful: downlock/uplock target a locked segment or
 // place, and accept/decline PUR requests target a locked place — all need the lock rank to
@@ -102,7 +103,16 @@ export async function createRequest(body: CreateRequestBody) {
   if (lock_level != null && (lock_level < 1 || lock_level > 7)) return err('lock_level must be between 1 and 7')
   if (editor_rank != null && (editor_rank < 1 || editor_rank > 6)) return err('editor_rank must be between 1 and 6')
   if (LOCK_GATED_TYPES.has(type) && lock_level != null && editor_rank != null && editor_rank >= lock_level) {
-    return err("Your editor rank already covers this lock level; no request needed.")
+    return err('Your editor rank already covers this lock level; no request needed.')
+  }
+  if (await isSubmitterBlocked(submitted_by)) {
+    return err(
+      'You have been blocked from submitting requests. Contact your local admins if you think this is a mistake.',
+      403,
+      {
+        code: 'blocked',
+      },
+    )
   }
 
   const country = await dbFirst<{ id: number; name: string; code: string }>('SELECT * FROM countries WHERE id = ?', [
@@ -142,11 +152,7 @@ export async function createRequest(body: CreateRequestBody) {
   return json(row, 201)
 }
 
-export async function updateRequest(
-  access: UserAccess,
-  id: number,
-  body: { status?: Status; notes?: string | null },
-) {
+export async function updateRequest(access: UserAccess, id: number, body: { status?: Status; notes?: string | null }) {
   const existing = await dbFirst<RequestWithCountry>('SELECT * FROM requests WHERE id = ?', [id])
   if (!existing) return err('Request not found', 404)
   if (!canAccessCountry(access, existing.country_id)) return err('Request not found', 404)
@@ -154,10 +160,11 @@ export async function updateRequest(
   const status = body.status && STATUSES.includes(body.status) ? body.status : existing.status
   const notes = body.notes !== undefined ? body.notes : existing.notes
 
-  await dbRun(
-    `UPDATE requests SET status=?, notes=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`,
-    [status, notes, id],
-  )
+  await dbRun(`UPDATE requests SET status=?, notes=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, [
+    status,
+    notes,
+    id,
+  ])
   const row = await dbFirst<RequestWithCountry>(`${REQUEST_SELECT} WHERE r.id = ?`, [id])
   return json(row)
 }

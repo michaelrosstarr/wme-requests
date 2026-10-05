@@ -19,6 +19,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ProtectedAdminRouteImport } from './routes/_protected/admin'
 import { Route as ProtectedReportsRouteImport } from './routes/_protected/reports'
 import { Route as ProtectedRequestsRouteImport } from './routes/_protected/requests'
+import { Route as ApiBlockedSubmittersRouteImport } from './routes/api/blocked-submitters'
 import { Route as ApiCountriesRouteImport } from './routes/api/countries'
 import { Route as ApiCredentialsRouteImport } from './routes/api/credentials'
 import { Route as ApiFeedRouteImport } from './routes/api/feed'
@@ -28,6 +29,7 @@ import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiScreenshotsRouteImport } from './routes/api/screenshots'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
+import { Route as ApiBlockedSubmittersIdRouteImport } from './routes/api/blocked-submitters/$id'
 import { Route as ApiChannelsIdRouteImport } from './routes/api/channels/$id'
 import { Route as ApiCountriesIdRouteImport } from './routes/api/countries/$id'
 import { Route as ApiCredentialsIdRouteImport } from './routes/api/credentials/$id'
@@ -95,6 +97,11 @@ const ProtectedRequestsRoute = ProtectedRequestsRouteImport.update({
   path: '/requests',
   getParentRoute: () => ProtectedRoute,
 } as any)
+const ApiBlockedSubmittersRoute = ApiBlockedSubmittersRouteImport.update({
+  id: '/api/blocked-submitters',
+  path: '/api/blocked-submitters',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCountriesRoute = ApiCountriesRouteImport.update({
   id: '/api/countries',
   path: '/api/countries',
@@ -139,6 +146,11 @@ const ApiUsersRoute = ApiUsersRouteImport.update({
   id: '/api/users',
   path: '/api/users',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBlockedSubmittersIdRoute = ApiBlockedSubmittersIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiBlockedSubmittersRoute,
 } as any)
 const ApiChannelsIdRoute = ApiChannelsIdRouteImport.update({
   id: '/api/channels/$id',
@@ -236,6 +248,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof ProtectedAdminRoute
   '/reports': typeof ProtectedReportsRoute
   '/requests': typeof ProtectedRequestsRoute
+  '/api/blocked-submitters': typeof ApiBlockedSubmittersRouteWithChildren
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
@@ -245,6 +258,7 @@ export interface FileRoutesByFullPath {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/screenshots': typeof ApiScreenshotsRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/api/blocked-submitters/$id': typeof ApiBlockedSubmittersIdRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
@@ -273,6 +287,7 @@ export interface FileRoutesByTo {
   '/admin': typeof ProtectedAdminRoute
   '/reports': typeof ProtectedReportsRoute
   '/requests': typeof ProtectedRequestsRoute
+  '/api/blocked-submitters': typeof ApiBlockedSubmittersRouteWithChildren
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
@@ -282,6 +297,7 @@ export interface FileRoutesByTo {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/screenshots': typeof ApiScreenshotsRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/api/blocked-submitters/$id': typeof ApiBlockedSubmittersIdRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
@@ -312,6 +328,7 @@ export interface FileRoutesById {
   '/_protected/admin': typeof ProtectedAdminRoute
   '/_protected/reports': typeof ProtectedReportsRoute
   '/_protected/requests': typeof ProtectedRequestsRoute
+  '/api/blocked-submitters': typeof ApiBlockedSubmittersRouteWithChildren
   '/api/countries': typeof ApiCountriesRouteWithChildren
   '/api/credentials': typeof ApiCredentialsRouteWithChildren
   '/api/feed': typeof ApiFeedRoute
@@ -321,6 +338,7 @@ export interface FileRoutesById {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/screenshots': typeof ApiScreenshotsRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/api/blocked-submitters/$id': typeof ApiBlockedSubmittersIdRoute
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
@@ -351,6 +369,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/reports'
     | '/requests'
+    | '/api/blocked-submitters'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
@@ -360,6 +379,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/screenshots'
     | '/api/users'
+    | '/api/blocked-submitters/$id'
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
@@ -388,6 +408,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/reports'
     | '/requests'
+    | '/api/blocked-submitters'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
@@ -397,6 +418,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/screenshots'
     | '/api/users'
+    | '/api/blocked-submitters/$id'
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
@@ -426,6 +448,7 @@ export interface FileRouteTypes {
     | '/_protected/admin'
     | '/_protected/reports'
     | '/_protected/requests'
+    | '/api/blocked-submitters'
     | '/api/countries'
     | '/api/credentials'
     | '/api/feed'
@@ -435,6 +458,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/screenshots'
     | '/api/users'
+    | '/api/blocked-submitters/$id'
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
@@ -462,6 +486,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
+  ApiBlockedSubmittersRoute: typeof ApiBlockedSubmittersRouteWithChildren
   ApiCountriesRoute: typeof ApiCountriesRouteWithChildren
   ApiCredentialsRoute: typeof ApiCredentialsRouteWithChildren
   ApiFeedRoute: typeof ApiFeedRoute
@@ -551,6 +576,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedRequestsRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/api/blocked-submitters': {
+      id: '/api/blocked-submitters'
+      path: '/api/blocked-submitters'
+      fullPath: '/api/blocked-submitters'
+      preLoaderRoute: typeof ApiBlockedSubmittersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/countries': {
       id: '/api/countries'
       path: '/api/countries'
@@ -613,6 +645,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/users'
       preLoaderRoute: typeof ApiUsersRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/blocked-submitters/$id': {
+      id: '/api/blocked-submitters/$id'
+      path: '/$id'
+      fullPath: '/api/blocked-submitters/$id'
+      preLoaderRoute: typeof ApiBlockedSubmittersIdRouteImport
+      parentRoute: typeof ApiBlockedSubmittersRoute
     }
     '/api/channels/$id': {
       id: '/api/channels/$id'
@@ -752,6 +791,17 @@ const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(
   ProtectedRouteChildren,
 )
 
+interface ApiBlockedSubmittersRouteChildren {
+  ApiBlockedSubmittersIdRoute: typeof ApiBlockedSubmittersIdRoute
+}
+
+const ApiBlockedSubmittersRouteChildren: ApiBlockedSubmittersRouteChildren = {
+  ApiBlockedSubmittersIdRoute: ApiBlockedSubmittersIdRoute,
+}
+
+const ApiBlockedSubmittersRouteWithChildren =
+  ApiBlockedSubmittersRoute._addFileChildren(ApiBlockedSubmittersRouteChildren)
+
 interface ApiCountriesIdRouteChildren {
   ApiCountriesIdChannelsRoute: typeof ApiCountriesIdChannelsRoute
   ApiCountriesIdRegionsRoute: typeof ApiCountriesIdRegionsRoute
@@ -861,6 +911,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
+  ApiBlockedSubmittersRoute: ApiBlockedSubmittersRouteWithChildren,
   ApiCountriesRoute: ApiCountriesRouteWithChildren,
   ApiCredentialsRoute: ApiCredentialsRouteWithChildren,
   ApiFeedRoute: ApiFeedRoute,
@@ -880,12 +931,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

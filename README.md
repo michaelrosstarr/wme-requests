@@ -129,9 +129,13 @@ Your app will be live at `https://<project>.<your-subdomain>.workers.dev`.
 
 The dashboard and nearly every API endpoint require a session: the WMEKit account cookie
 (scoped to `.wmekit.com`), which `apiRoute` checks with wmeAuth over the `AUTH` service
-binding. The one exception is `POST /api/requests` — that's the endpoint the Tampermonkey
-userscript calls cross-origin from `waze.com`, which has no way to complete an interactive
-login, so it stays open.
+binding. The exceptions are `POST /api/requests` and `POST /api/screenshots` — the endpoints the
+Tampermonkey userscript calls cross-origin from `waze.com`, which has no way to complete an
+interactive login. Instead they only accept requests from a Waze page (`waze.com`,
+`www.waze.com`, `beta.waze.com`): a browser-set `Origin` must be one of those, and a request
+from a userscript manager (which sends the extension's `Origin`, or none) must name one in an
+`X-WME-Requests-Origin` header. That stops other websites from submitting through a visitor's
+browser, but not a non-browser client, which can send any headers it likes.
 
 Anyone can create a WMEKit account, so an account alone gets you nothing here: you also need
 a `user_access` row, which global users grant from **Admin → Users → Add user** (that finds the

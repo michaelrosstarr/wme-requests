@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.8.6
+// @version      2.9.0
 // @description  Send downlock, uplock, imagery, and place update (accept/decline PUR) requests from Waze Map Editor, with notifications to Slack, Discord and Telegram.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*
@@ -11,6 +11,9 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_info
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.xmlHttpRequest
 // @grant        unsafeWindow
 // @license MIT
 // @connect      requests.wmekit.com
@@ -38,17 +41,54 @@
   const SCRIPT_NAME = 'WME Requests';
   const PANEL_ID = 'wme-requests-panel';
   const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-  // ── State ───────────────────────────────────────────────────────────────────
-  let apiBase = GM_getValue('apiBase', DEFAULT_API_BASE);
-  if (apiBase.replace(/\/+$/, '') === LEGACY_API_BASE) {
-    apiBase = DEFAULT_API_BASE;
-    GM_setValue('apiBase', apiBase);
+  // ── Storage ─────────────────────────────────────────────────────────────────
+  // Tampermonkey and Violentmonkey have the synchronous GM_getValue/GM_setValue; Userscripts
+  // (Safari) only has the promise-based GM.getValue/GM.setValue. There, every key the script
+  // reads is loaded into storageCache once at startup (loadStorage), so reads stay synchronous
+  // either way. A new stored key needs adding to STORED_KEYS.
+  const STORED_KEYS = ['apiBase', 'fabStyle', 'wmereq-fab-visible', 'wmereq-fab-pos', 'wmereq-debug'];
+  const hasSyncStorage = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
+  const hasAsyncStorage = typeof GM !== 'undefined' && typeof GM.getValue === 'function';
+  const storageCache = new Map();
+  async function loadStorage() {
+    if (hasSyncStorage || !hasAsyncStorage) return;
+    await Promise.all(
+      STORED_KEYS.map(async (key) => {
+        const value = await GM.getValue(key, undefined);
+        if (value !== undefined) storageCache.set(key, value);
+      }),
+    );
   }
+  function getStored(key, defaultValue) {
+    if (hasSyncStorage) return GM_getValue(key, defaultValue);
+    return storageCache.has(key) ? storageCache.get(key) : defaultValue;
+  }
+  function setStored(key, value) {
+    if (hasSyncStorage) {
+      GM_setValue(key, value);
+      return;
+    }
+    storageCache.set(key, value);
+    if (hasAsyncStorage) GM.setValue(key, value).catch((e) => log(`Failed to save ${key}: ${errorMessage(e)}`));
+  }
+  // ── State ───────────────────────────────────────────────────────────────────
+  // The stored settings are read by loadSettings() once loadStorage() has finished.
+  let apiBase = DEFAULT_API_BASE;
   // 'full' (text only), 'compact' (icon + text), or 'icon' (icon only) — style of the
   // always-visible floating Downlock/Imagery buttons. See applyFabStyle().
-  let fabStyle = GM_getValue('fabStyle', 'full');
+  let fabStyle = 'full';
   // Per-button show/hide for the floating action buttons — see applyFabVisibility().
-  let fabVisible = loadFabVisible();
+  let fabVisible;
+  function loadSettings() {
+    apiBase = getStored('apiBase', DEFAULT_API_BASE);
+    if (apiBase.replace(/\/+$/, '') === LEGACY_API_BASE) {
+      apiBase = DEFAULT_API_BASE;
+      setStored('apiBase', apiBase);
+    }
+    fabStyle = getStored('fabStyle', 'full');
+    fabVisible = loadFabVisible();
+    DEBUG = getStored('wmereq-debug', false);
+  }
   // Kind of the current selection (null when nothing's selected) — decides which floating
   // buttons applyFabVisibility() shows, via FAB_KIND_TYPES.
   let fabKind = null;
@@ -272,6 +312,7 @@
       flex: 0 0 auto; max-width: 90vw; max-height: 80vh; border-radius: 4px;
       box-shadow: 0 4px 24px rgba(0,0,0,.4); cursor: crosshair; touch-action: none;
     }
+    #wmereq-shot-editor .wmereq-shot-hint { font-size: 13px; color: #fff; }
     #wmereq-shot-editor .wmereq-shot-error { font-size: 12px; color: #c62828; background: #ffebee; padding: 5px 8px; border-radius: 4px; }
     #wmereq-floating-actions {
       position: fixed; top: 70px; left: 10px; z-index: 1000;
@@ -428,7 +469,7 @@
   };
   function loadFabVisible() {
     const defaults = { downlock: true, uplock: true, imagery: true, accept_pur: true, decline_pur: true };
-    const saved = GM_getValue('wmereq-fab-visible', null);
+    const saved = getStored('wmereq-fab-visible', null);
     if (!saved) return defaults;
     try {
       return { ...defaults, ...JSON.parse(saved) };
@@ -447,7 +488,7 @@
     }
   }
   function resetFabPosition() {
-    GM_setValue('wmereq-fab-pos', null);
+    setStored('wmereq-fab-pos', null);
     const wrap = byId('wmereq-floating-actions');
     if (wrap) {
       wrap.style.top = '';
@@ -457,7 +498,7 @@
     showStatus('Button position reset.', 'ok');
   }
   function makeDraggable(container, handle, storageKey) {
-    const saved = GM_getValue(storageKey, null);
+    const saved = getStored(storageKey, null);
     if (saved) {
       try {
         const pos = JSON.parse(saved);
@@ -501,7 +542,7 @@
         applyPosition();
       }
       const rect = container.getBoundingClientRect();
-      GM_setValue(storageKey, JSON.stringify({ top: rect.top, left: rect.left }));
+      setStored(storageKey, JSON.stringify({ top: rect.top, left: rect.left }));
     };
     handle.addEventListener('mousedown', (e) => {
       const rect = container.getBoundingClientRect();
@@ -606,21 +647,25 @@
     }
   }
   // ── Viewport screenshot (optional) ────────────────────────────────────────────
-  // Captures the current tab with getDisplayMedia and reduces it to just the map
-  // viewport element. Where the Element Capture API (RestrictionTarget) exists
-  // (Chrome), the stream itself is restricted to the viewport. Elsewhere (Edge,
-  // Firefox, …) we grab a frame of the whole tab and crop it to the viewport's
-  // bounding rect ourselves. screenshotCaptureSupported() only requires
-  // getDisplayMedia, so browsers without any screen capture don't see the option.
+  // Captures the screen with getDisplayMedia and reduces it to just the map viewport
+  // element. Where the Element Capture API (RestrictionTarget) exists (Chrome), the stream
+  // itself is restricted to the viewport. Elsewhere we grab a frame of whatever was shared
+  // — this tab (Edge), or a window or the whole screen (Firefox and Safari can't share a
+  // tab) — and estimate where the viewport is within it (estimateViewportInFrame). The
+  // whole frame is kept, so the editor's Crop tool can fix a wrong or missing estimate.
+  // screenshotCaptureSupported() only requires getDisplayMedia, so browsers without any
+  // screen capture don't see the option.
   let capturedScreenshotBlob = null;
-  // The unmarked capture and the markup drawn over it, kept so the editor can be reopened
-  // from a clean image with the earlier shapes still undoable. capturedScreenshotBlob is
-  // the original with these shapes flattened in (or the original itself, if none).
+  // The unmarked, uncropped capture plus the crop and markup applied to it, kept so the
+  // editor can be reopened from a clean image with the earlier crop and shapes still
+  // editable. capturedScreenshotBlob is renderScreenshot() of these three.
   let capturedScreenshotOriginal = null;
+  let screenshotCrop = null;
   let screenshotShapes = [];
   function clearScreenshot() {
     capturedScreenshotBlob = null;
     capturedScreenshotOriginal = null;
+    screenshotCrop = null;
     screenshotShapes = [];
     updateScreenshotButton();
   }
@@ -630,41 +675,202 @@
   const SCREENSHOT_MAX_DIMENSION = 1920;
   const SCREENSHOT_JPEG_QUALITY = 0.85;
   const SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
+  // The kept uncropped frame is only scaled down to this, so cropping a small part of a
+  // whole-screen capture still leaves some detail. It's never uploaded itself.
+  const SCREENSHOT_SOURCE_MAX_DIMENSION = 3840;
+  const SCREENSHOT_SOURCE_JPEG_QUALITY = 0.92;
   function screenshotCaptureSupported() {
     return !!navigator.mediaDevices?.getDisplayMedia;
   }
   // Returns a drawable frame from the track: an ImageBitmap via ImageCapture where
-  // available, otherwise an off-DOM <video> playing the stream (drawn from directly).
+  // available, otherwise a <video> playing the stream (drawn from directly).
   // ImageCapture.grabFrame() can reject (sometimes with no error value at all, in Chrome)
   // when the track has no frame ready, so a failure there falls through to the <video> path.
   async function grabVideoFrame(track, stream) {
     if (typeof ImageCapture !== 'undefined') {
       try {
         const bitmap = await new ImageCapture(track).grabFrame();
-        return { source: bitmap, width: bitmap.width, height: bitmap.height };
+        return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() };
       } catch (e) {
         log(`ImageCapture.grabFrame() failed, falling back to a <video> element: ${errorMessage(e)}`);
       }
     }
+    // Safari may never decode a frame for a <video> that isn't in the document, so it's
+    // added, invisibly, for as long as it's in use.
     const video = document.createElement('video');
     video.muted = true;
     video.playsInline = true;
+    video.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
     video.srcObject = stream;
-    await video.play();
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timed out waiting for a video frame.')), 3000);
-        video.addEventListener(
-          'loadeddata',
-          () => {
-            clearTimeout(timer);
-            resolve();
-          },
-          { once: true },
-        );
-      });
+    const release = () => {
+      video.srcObject = null;
+      video.remove();
+    };
+    document.body.appendChild(video);
+    try {
+      await video.play();
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Timed out waiting for a video frame.')), 3000);
+          video.addEventListener(
+            'loadeddata',
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      }
+    } catch (e) {
+      release();
+      throw e;
     }
-    return { source: video, width: video.videoWidth, height: video.videoHeight };
+    return { source: video, width: video.videoWidth, height: video.videoHeight, release };
+  }
+  // How far (as a fraction) a frame's aspect ratio may be from a surface's to count as a
+  // capture of it, and a crop estimate's from the viewport's to be trusted.
+  const SURFACE_ASPECT_TOLERANCE = 0.02;
+  const CROP_ASPECT_TOLERANCE = 0.03;
+  // Outside Firefox, the content area's place in the window is inferred from outer* − inner*.
+  // Past these, that difference is more than borders and toolbars — docked dev tools, or
+  // page zoom (which changes inner* but not outer*) — and the inference can't be trusted.
+  const MAX_WINDOW_SIDE_BORDER_PX = 16;
+  const MAX_WINDOW_TOOLBAR_PX = 200;
+  // macOS's menu bar sits above screen.availTop; see monitorOrigin().
+  const MAC_MENU_BAR_MAX_PX = 50;
+  function aspectDiff(a, b) {
+    return Math.abs(a / b - 1);
+  }
+  // The shared monitor's top-left, in the same global CSS px as screenX/screenY. Firefox
+  // reports it (screen.left/top). Elsewhere the usable area's origin (availLeft/availTop)
+  // stands in; on macOS that's just below the menu bar, so a usable area starting within a
+  // menu bar's height of the top is taken to start at 0.
+  function monitorOrigin() {
+    if (screen.left !== undefined && screen.top !== undefined) return { left: screen.left, top: screen.top };
+    const left = screen.availLeft ?? 0;
+    let top = screen.availTop ?? 0;
+    if (/Mac/.test(navigator.platform) && top > 0 && top <= MAC_MENU_BAR_MAX_PX) top = 0;
+    return { left, top };
+  }
+  // Best guess at the map viewport's rect within a captured frame, in frame pixels, or
+  // null when there's no trustworthy guess (the user then crops by hand). `surface` is the
+  // track's displaySurface, which Safari may not report; `viewport` is the viewport's client
+  // rect. The content area's origin within the shared surface is worked out in CSS px first,
+  // then everything is scaled to the frame.
+  function estimateViewportInFrame(surface, frame, viewport) {
+    const frameAspect = frame.width / frame.height;
+    const surfaceAspects = {
+      browser: innerWidth / innerHeight,
+      window: outerWidth / outerHeight,
+      monitor: screen.width / screen.height,
+    };
+    if (!surface) {
+      let bestDiff = SURFACE_ASPECT_TOLERANCE;
+      for (const [candidate, aspect] of Object.entries(surfaceAspects)) {
+        const diff = aspectDiff(frameAspect, aspect);
+        if (diff <= bestDiff) {
+          surface = candidate;
+          bestDiff = diff;
+        }
+      }
+      if (!surface) {
+        log(
+          `Screenshot: no displaySurface reported, and a ${frame.width}×${frame.height} frame doesn't match this tab, window or screen.`,
+        );
+        return null;
+      }
+      log(`Screenshot: no displaySurface reported; the frame's shape suggests a ${surface} was shared.`);
+    } else if (
+      surface !== 'browser' &&
+      surface in surfaceAspects &&
+      aspectDiff(frameAspect, surfaceAspects[surface]) > SURFACE_ASPECT_TOLERANCE
+    ) {
+      log(`Screenshot: a ${frame.width}×${frame.height} frame doesn't match the shared ${surface}'s shape.`);
+      return null;
+    }
+    // Firefox gives the content area's screen position exactly. Elsewhere it's inferred:
+    // equal borders on either side, and everything else (toolbars, tab strip) on top.
+    const mozX = window.mozInnerScreenX;
+    const mozY = window.mozInnerScreenY;
+    const hasMoz = mozX !== undefined && mozY !== undefined;
+    const border = (outerWidth - innerWidth) / 2;
+    const toolbar = outerHeight - innerHeight - border;
+    if (
+      !hasMoz &&
+      surface !== 'browser' &&
+      (border < 0 || border > MAX_WINDOW_SIDE_BORDER_PX || toolbar < 0 || toolbar > MAX_WINDOW_TOOLBAR_PX)
+    ) {
+      log(
+        `Screenshot: can't place the page within its window (borders ${border}px, toolbars ${toolbar}px) — page zoom or docked dev tools?`,
+      );
+      return null;
+    }
+    let originX = 0;
+    let originY = 0;
+    let scaleX;
+    let scaleY;
+    switch (surface) {
+      case 'browser':
+        scaleX = frame.width / innerWidth;
+        scaleY = frame.height / innerHeight;
+        break;
+      case 'window':
+        originX = hasMoz ? mozX - screenX : border;
+        originY = hasMoz ? mozY - screenY : toolbar;
+        scaleX = scaleY = frame.width / outerWidth;
+        break;
+      case 'monitor': {
+        const origin = monitorOrigin();
+        originX = (hasMoz ? mozX : screenX + border) - origin.left;
+        originY = (hasMoz ? mozY : screenY + toolbar) - origin.top;
+        scaleX = scaleY = frame.width / screen.width;
+        break;
+      }
+      default:
+        log(`Screenshot: unknown displaySurface "${surface}".`);
+        return null;
+    }
+    const left = (originX + viewport.left) * scaleX;
+    const top = (originY + viewport.top) * scaleY;
+    const right = (originX + viewport.right) * scaleX;
+    const bottom = (originY + viewport.bottom) * scaleY;
+    // A couple of pixels' slack for rounding, clamped away below.
+    if (
+      left < -2 ||
+      top < -2 ||
+      right > frame.width + 2 ||
+      bottom > frame.height + 2 ||
+      right <= left ||
+      bottom <= top
+    ) {
+      log(
+        `Screenshot: the estimated map viewport (${Math.round(left)},${Math.round(top)})–(${Math.round(right)},${Math.round(bottom)}) is outside the ${frame.width}×${frame.height} ${surface} frame.`,
+      );
+      return null;
+    }
+    const rect = rectFromEdges(left, top, right, bottom, frame.width, frame.height);
+    if (aspectDiff(rect.width / rect.height, viewport.width / viewport.height) > CROP_ASPECT_TOLERANCE) {
+      log(`Screenshot: the estimated map viewport (${rect.width}×${rect.height}) isn't the map's shape.`);
+      return null;
+    }
+    return rect;
+  }
+  // Rounds and clamps edges to whole pixels within a width×height image.
+  function rectFromEdges(left, top, right, bottom, width, height) {
+    const x = Math.round(Math.min(Math.max(0, left), width));
+    const y = Math.round(Math.min(Math.max(0, top), height));
+    return {
+      x,
+      y,
+      width: Math.round(Math.min(Math.max(0, right), width)) - x,
+      height: Math.round(Math.min(Math.max(0, bottom), height)) - y,
+    };
+  }
+  async function canvasToJpeg(canvas, quality) {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob) throw new Error('Failed to create an image from the canvas.');
+    return blob;
   }
   async function captureViewportScreenshot() {
     const viewportEl = sdk.Map.getMapViewportElement();
@@ -684,59 +890,81 @@
           await track.restrictTo(restrictionTarget);
           elementCaptured = true;
         } catch (e) {
-          log(`Element Capture failed, falling back to cropping the tab capture: ${errorMessage(e)}`);
+          log(`Element Capture failed, falling back to cropping the captured frame: ${errorMessage(e)}`);
         }
       }
-      // Lets the restriction apply, and lets the "Sharing this tab" infobar finish
-      // resizing the page before the viewport rect is measured below.
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const surface = track.getSettings().displaySurface;
+      // Lets the restriction apply, and lets the "Sharing this tab" infobar finish resizing
+      // the page before the viewport rect is measured below. A window or screen share waits
+      // longer, so Firefox's sharing doorhanger and Safari's picker are gone from the frame.
+      await new Promise((resolve) => setTimeout(resolve, elementCaptured || surface === 'browser' ? 150 : 500));
       const frame = await grabVideoFrame(track, stream);
-      // Source rect within the frame; defaults to the whole frame.
-      let sx = 0,
-        sy = 0,
-        sw = frame.width,
-        sh = frame.height;
-      if (!elementCaptured) {
-        const surface = track.getSettings().displaySurface;
-        if (surface && surface !== 'browser') {
-          log(
-            `Screenshot: a ${surface} was shared instead of this tab, so the image can't be cropped to the map viewport; using the full frame.`,
+      try {
+        const crop = elementCaptured
+          ? null
+          : estimateViewportInFrame(surface, frame, viewportEl.getBoundingClientRect());
+        const scale = Math.min(1, SCREENSHOT_SOURCE_MAX_DIMENSION / Math.max(frame.width, frame.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(frame.width * scale);
+        canvas.height = Math.round(frame.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Failed to get canvas context.');
+        ctx.drawImage(frame.source, 0, 0, canvas.width, canvas.height);
+        const blob = await canvasToJpeg(canvas, SCREENSHOT_SOURCE_JPEG_QUALITY);
+        const scaledCrop =
+          crop &&
+          rectFromEdges(
+            crop.x * scale,
+            crop.y * scale,
+            (crop.x + crop.width) * scale,
+            (crop.y + crop.height) * scale,
+            canvas.width,
+            canvas.height,
           );
-        } else {
-          const rect = viewportEl.getBoundingClientRect();
-          const scaleX = frame.width / window.innerWidth;
-          const scaleY = frame.height / window.innerHeight;
-          const left = Math.max(0, Math.round(rect.left * scaleX));
-          const top = Math.max(0, Math.round(rect.top * scaleY));
-          const right = Math.min(frame.width, Math.round(rect.right * scaleX));
-          const bottom = Math.min(frame.height, Math.round(rect.bottom * scaleY));
-          if (right > left && bottom > top) {
-            sx = left;
-            sy = top;
-            sw = right - left;
-            sh = bottom - top;
-          } else {
-            log('Screenshot: the map viewport is outside the captured frame; using the full frame.');
-          }
-        }
+        log(
+          `Screenshot captured: ${surface ?? 'unknown surface'}${elementCaptured ? ' (Element Capture)' : ''}, ${canvas.width}×${canvas.height}` +
+            (scaledCrop
+              ? `, map at ${scaledCrop.x},${scaledCrop.y} ${scaledCrop.width}×${scaledCrop.height}`
+              : elementCaptured
+                ? ''
+                : ', map not found') +
+            '.',
+        );
+        return { blob, crop: scaledCrop, needsCrop: !elementCaptured && !scaledCrop };
+      } finally {
+        frame.release();
       }
-      const scale = Math.min(1, SCREENSHOT_MAX_DIMENSION / Math.max(sw, sh));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(sw * scale);
-      canvas.height = Math.round(sh * scale);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Failed to get canvas context.');
-      ctx.drawImage(frame.source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-      if (frame.source instanceof ImageBitmap) frame.source.close();
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', SCREENSHOT_JPEG_QUALITY));
-      if (!blob) throw new Error('Failed to create an image from the canvas.');
-      if (blob.size > SCREENSHOT_MAX_BYTES) throw new Error('The screenshot is too large to upload (over 5MB).');
-      log(`Screenshot captured: ${canvas.width}×${canvas.height}, ${Math.round(blob.size / 1024)}KB.`);
-      return blob;
     } finally {
       stream.getTracks().forEach((t) => t.stop());
       viewportEl.style.isolation = prevIsolation;
     }
+  }
+  // Line width for markup over `region`: scaled to it so shapes stay visible on large
+  // images, and computed the same way in the editor as in the rendered result.
+  function markupLineWidth(region) {
+    return Math.max(3, region.width / 300);
+  }
+  // The image that gets attached: `crop` of `image` (all of it when null) with the shapes
+  // drawn on, scaled down to SCREENSHOT_MAX_DIMENSION and encoded as JPEG.
+  async function renderScreenshot(image, crop, shapes) {
+    const region = crop ?? { x: 0, y: 0, width: image.width, height: image.height };
+    const scale = Math.min(1, SCREENSHOT_MAX_DIMENSION / Math.max(region.width, region.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(region.width * scale));
+    canvas.height = Math.max(1, Math.round(region.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get canvas context.');
+    ctx.scale(scale, scale);
+    ctx.translate(-region.x, -region.y);
+    ctx.drawImage(image, 0, 0);
+    const lineWidth = markupLineWidth(region);
+    for (const shape of shapes) drawMarkupShape(ctx, shape, lineWidth);
+    const blob = await canvasToJpeg(canvas, SCREENSHOT_JPEG_QUALITY);
+    if (blob.size > SCREENSHOT_MAX_BYTES) throw new Error('The screenshot is too large to upload (over 5MB).');
+    log(
+      `Screenshot rendered: ${canvas.width}×${canvas.height}${crop ? ' (cropped)' : ''}, ${shapes.length} shape(s), ${Math.round(blob.size / 1024)}KB.`,
+    );
+    return blob;
   }
   // Syncs every Attach Screenshot button (the panel's, and the reason modal's while it's
   // open) with the shared capturedScreenshotBlob.
@@ -750,17 +978,24 @@
   }
   // Captures into capturedScreenshotBlob, reporting failures via `onError`. `hideEl` (the
   // reason modal's overlay) is hidden for the duration so it doesn't end up in the image.
-  // On success, opens the markup editor over the new capture. Returns whether a screenshot
-  // was captured.
+  // On success, opens the editor over the new capture — with Crop selected if the map
+  // couldn't be found in it. Returns whether a screenshot was captured.
   async function captureScreenshotFromButton(btn, onError, hideEl) {
     if (btn) {
       btn.disabled = true;
       btn.textContent = 'Capturing…';
     }
     if (hideEl) hideEl.style.visibility = 'hidden';
+    let capture;
     let blob;
     try {
-      blob = await captureViewportScreenshot();
+      capture = await captureViewportScreenshot();
+      const bitmap = await createImageBitmap(capture.blob);
+      try {
+        blob = await renderScreenshot(bitmap, capture.crop, []);
+      } finally {
+        bitmap.close();
+      }
     } catch (e) {
       const message = errorMessage(e);
       log('Screenshot capture failed: ' + message);
@@ -771,21 +1006,28 @@
       if (hideEl) hideEl.style.visibility = '';
       if (btn) btn.disabled = false;
     }
-    capturedScreenshotBlob = capturedScreenshotOriginal = blob;
+    capturedScreenshotOriginal = capture.blob;
+    screenshotCrop = capture.crop;
     screenshotShapes = [];
+    capturedScreenshotBlob = blob;
     updateScreenshotButton();
-    await editScreenshot(onError);
+    await editScreenshot(onError, capture.needsCrop);
     return true;
   }
-  // Reopens the markup editor on the unmarked capture with the current shapes. Done
-  // replaces the attached image; Cancel leaves it as it was.
-  async function editScreenshot(onError) {
-    if (!capturedScreenshotOriginal) return;
+  // Reopens the editor on the uncropped, unmarked capture with the current crop and shapes.
+  // Done replaces the attached image; Cancel leaves it as it was.
+  async function editScreenshot(onError, cropFirst = false) {
+    if (!capturedScreenshotOriginal || !capturedScreenshotBlob) return;
     try {
-      const result = await openScreenshotEditor(capturedScreenshotOriginal, screenshotShapes);
+      const result = await openScreenshotEditor(
+        capturedScreenshotOriginal,
+        { blob: capturedScreenshotBlob, shapes: screenshotShapes, crop: screenshotCrop },
+        cropFirst,
+      );
       if (result) {
         capturedScreenshotBlob = result.blob;
         screenshotShapes = result.shapes;
+        screenshotCrop = result.crop;
       }
     } catch (e) {
       const message = errorMessage(e);
@@ -794,10 +1036,11 @@
     }
     updateScreenshotButton();
   }
-  // ── Screenshot markup editor ──────────────────────────────────────────────────
-  // Full-screen overlay for drawing red circles and arrows over a capture. Shapes are kept
-  // as data (not pixels) so Undo/Clear work and a later edit can restore them; Done
-  // flattens them into a new JPEG. Resolves null on Cancel/Esc.
+  // ── Screenshot editor ─────────────────────────────────────────────────────────
+  // Full-screen overlay for cropping a capture to the map and drawing red circles and
+  // arrows over it. The crop and shapes are kept as data (not pixels) so Undo/Clear/Full
+  // image work and a later edit can restore them; Done renders them into a new JPEG
+  // (renderScreenshot). Resolves null on Cancel/Esc.
   const MARKUP_COLOR = '#e53935';
   // Drags shorter than this (in screen pixels) are treated as stray clicks.
   const MARKUP_MIN_DRAG_PX = 5;
@@ -828,26 +1071,53 @@
     ctx.closePath();
     ctx.fill();
   }
-  async function openScreenshotEditor(original, initialShapes) {
+  // Dims everything outside `crop` and outlines it with a dashed line.
+  function drawCropOverlay(ctx, crop) {
+    const { width, height } = ctx.canvas;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.6)';
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.rect(crop.x, crop.y, crop.width, crop.height);
+    ctx.fill('evenodd');
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = Math.max(2, width / 800);
+    ctx.setLineDash([ctx.lineWidth * 4, ctx.lineWidth * 3]);
+    ctx.strokeRect(crop.x, crop.y, crop.width, crop.height);
+    ctx.restore();
+  }
+  // Opens the editor over `original` (the uncropped, unmarked capture) with `current`'s
+  // crop and shapes. `cropFirst` selects the Crop tool and asks for a crop, for when the map
+  // couldn't be found in the capture. Resolves to the edited result, or null on Cancel/Esc.
+  async function openScreenshotEditor(original, current, cropFirst) {
     const bitmap = await createImageBitmap(original);
-    const shapes = initialShapes.slice();
-    // Scaled to the image so markup stays visible on full-size (1920px) captures.
-    const lineWidth = Math.max(3, bitmap.width / 300);
-    let tool = 'circle';
+    const shapes = current.shapes.slice();
+    let crop = current.crop;
+    const fullImage = { width: bitmap.width, height: bitmap.height };
+    let tool = cropFirst ? 'crop' : 'circle';
+    // The shape or crop being dragged out.
     let draft = null;
+    // Whether anything was changed — if not, Done keeps the current image rather than
+    // re-encoding it for no gain.
+    let changed = false;
+    const toolBtn = (name, label) =>
+      `<button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-shot-tool${tool === name ? ' active' : ''}" data-tool="${name}">${label}</button>`;
     const overlay = document.createElement('div');
     overlay.id = 'wmereq-shot-editor';
     overlay.innerHTML = `
     <div class="wmereq-shot-toolbar">
-      <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-shot-tool active" data-tool="circle">Circle</button>
-      <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-shot-tool" data-tool="arrow">Arrow</button>
+      ${toolBtn('circle', 'Circle')}
+      ${toolBtn('arrow', 'Arrow')}
+      ${toolBtn('crop', 'Crop')}
       <span class="wmereq-shot-sep"></span>
       <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="undo">Undo</button>
       <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="clear">Clear</button>
+      <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="full" title="Remove the crop">Full image</button>
       <span class="wmereq-shot-sep"></span>
       <button type="button" class="wmereq-btn wmereq-btn-primary" data-action="done">Done</button>
       <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="cancel">Cancel</button>
     </div>
+    <div class="wmereq-shot-hint"${cropFirst ? '' : ' style="display:none"'}>Drag around the map to crop.</div>
     <canvas></canvas>
     <div class="wmereq-shot-error" style="display:none"></div>`;
     const canvas = overlay.querySelector('canvas');
@@ -859,12 +1129,27 @@
       throw new Error('Failed to get canvas context.');
     }
     const errEl = overlay.querySelector('.wmereq-shot-error');
+    const hintEl = overlay.querySelector('.wmereq-shot-hint');
     const actionBtn = (action) => overlay.querySelector(`[data-action="${action}"]`);
+    function draftCrop(d) {
+      return rectFromEdges(
+        Math.min(d.x1, d.x2),
+        Math.min(d.y1, d.y2),
+        Math.max(d.x1, d.x2),
+        Math.max(d.y1, d.y2),
+        bitmap.width,
+        bitmap.height,
+      );
+    }
     function redraw() {
       ctx.drawImage(bitmap, 0, 0);
+      const lineWidth = markupLineWidth(crop ?? fullImage);
       for (const shape of shapes) drawMarkupShape(ctx, shape, lineWidth);
-      if (draft) drawMarkupShape(ctx, draft, lineWidth);
+      if (draft && draft.kind !== 'crop') drawMarkupShape(ctx, draft, lineWidth);
+      const shownCrop = draft?.kind === 'crop' ? draftCrop(draft) : crop;
+      if (shownCrop) drawCropOverlay(ctx, shownCrop);
       actionBtn('undo').disabled = actionBtn('clear').disabled = !shapes.length;
+      actionBtn('full').disabled = !crop;
     }
     // Maps a pointer position to image pixels (the canvas is displayed scaled down).
     function toImagePoint(e) {
@@ -891,7 +1176,17 @@
     canvas.addEventListener('pointerup', () => {
       if (!draft) return;
       const displayScale = canvas.getBoundingClientRect().width / canvas.width;
-      if (Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) * displayScale >= MARKUP_MIN_DRAG_PX) shapes.push(draft);
+      if (draft.kind === 'crop') {
+        const rect = draftCrop(draft);
+        if (Math.min(rect.width, rect.height) * displayScale >= MARKUP_MIN_DRAG_PX) {
+          crop = rect;
+          changed = true;
+          hintEl.style.display = 'none';
+        }
+      } else if (Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) * displayScale >= MARKUP_MIN_DRAG_PX) {
+        shapes.push(draft);
+        changed = true;
+      }
       draft = null;
       redraw();
     });
@@ -907,10 +1202,17 @@
     });
     actionBtn('undo').addEventListener('click', () => {
       shapes.pop();
+      changed = true;
       redraw();
     });
     actionBtn('clear').addEventListener('click', () => {
       shapes.length = 0;
+      changed = true;
+      redraw();
+    });
+    actionBtn('full').addEventListener('click', () => {
+      crop = null;
+      changed = true;
       redraw();
     });
     document.body.appendChild(overlay);
@@ -932,25 +1234,21 @@
       document.addEventListener('keydown', onKeyDown, true);
       actionBtn('cancel').addEventListener('click', () => finish(null));
       actionBtn('done').addEventListener('click', async () => {
-        // Nothing drawn: keep the original rather than re-encoding it for no gain.
-        if (!shapes.length) {
-          finish({ blob: original, shapes: [] });
+        if (!changed) {
+          finish(current);
           return;
         }
         const doneBtn = actionBtn('done');
         doneBtn.disabled = true;
         errEl.style.display = 'none';
-        const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', SCREENSHOT_JPEG_QUALITY));
-        doneBtn.disabled = false;
-        if (!blob || blob.size > SCREENSHOT_MAX_BYTES) {
-          errEl.textContent = blob
-            ? 'The marked-up screenshot is too large to upload (over 5MB).'
-            : 'Failed to create an image from the canvas.';
+        try {
+          const blob = await renderScreenshot(bitmap, crop, shapes);
+          finish({ blob, shapes, crop });
+        } catch (e) {
+          errEl.textContent = errorMessage(e);
           errEl.style.display = '';
-          return;
+          doneBtn.disabled = false;
         }
-        log(`Screenshot marked up with ${shapes.length} shape(s): ${Math.round(blob.size / 1024)}KB.`);
-        finish({ blob, shapes });
       });
     });
   }
@@ -1876,36 +2174,62 @@
     const val = byId('wmereq-api-base')?.value.trim().replace(/\/$/, '');
     if (val) {
       apiBase = val;
-      GM_setValue('apiBase', val);
+      setStored('apiBase', val);
       regionsLoadedForCountryId = null; // a different backend may have different regions for the same id
       regionFetches.clear();
       fetchCountries();
     }
     fabStyle = byId('wmereq-fab-style')?.value ?? fabStyle;
-    GM_setValue('fabStyle', fabStyle);
+    setStored('fabStyle', fabStyle);
     applyFabStyle();
     for (const type of FAB_TYPES) {
       const checkbox = byId(`wmereq-fab-visible-${typeSlug(type)}`);
       if (checkbox) fabVisible[type] = checkbox.checked;
     }
-    GM_setValue('wmereq-fab-visible', JSON.stringify(fabVisible));
+    setStored('wmereq-fab-visible', JSON.stringify(fabVisible));
     applyFabVisibility();
     showStatus('Settings saved.', 'ok');
   }
   // ── API helpers (GM_xmlhttpRequest) ───────────────────────────────────────────
   const REQUEST_TIMEOUT_MS = 15000;
+  // GM_xmlhttpRequest where the manager has it (Tampermonkey, Violentmonkey), otherwise
+  // GM.xmlHttpRequest (Userscripts on Safari). Both report back through the callbacks in
+  // `details`, so the promise GM.xmlHttpRequest also returns is only kept from rejecting
+  // unhandled. Called from a Promise executor, so the throw below becomes a rejection.
+  function gmXhr(details) {
+    if (typeof GM_xmlhttpRequest === 'function') {
+      GM_xmlhttpRequest(details);
+      return;
+    }
+    if (typeof GM === 'undefined' || typeof GM.xmlHttpRequest !== 'function') {
+      throw new Error('This userscript manager has no GM_xmlhttpRequest.');
+    }
+    Promise.resolve(GM.xmlHttpRequest(details)).catch(() => {});
+  }
+  // Tampermonkey and Violentmonkey send a Blob `data` as-is; other managers aren't relied on
+  // to, so they get its bytes as an ArrayBuffer instead.
+  async function blobRequestBody(blob) {
+    const handler = typeof GM_info !== 'undefined' ? GM_info.scriptHandler : '';
+    return handler === 'Tampermonkey' || handler === 'Violentmonkey' ? blob : blob.arrayBuffer();
+  }
   // One request helper for every API call. `data` is sent as JSON unless it's a Blob (the
-  // screenshot upload), which goes as the raw body with the given `contentType` —
-  // GM_xmlhttpRequest accepts a Blob directly for `data`, same as fetch's body would.
-  // The timeout matters: a stalled request would otherwise leave the submit buttons
-  // disabled for good.
-  function gmRequest(method, path, data, contentType = 'application/json') {
-    const body = data === undefined ? undefined : data instanceof Blob ? data : JSON.stringify(data);
+  // screenshot upload), which goes as the raw body with the given `contentType` (see
+  // blobRequestBody). Every call names the WME page it's made from in X-WME-Requests-Origin:
+  // the userscript manager sends its own Origin rather than waze.com's, and the server only
+  // takes submissions from Waze pages. The timeout matters: a stalled request would otherwise
+  // leave the submit buttons disabled for good.
+  async function gmRequest(method, path, data, contentType = 'application/json') {
+    const body =
+      data === undefined ? undefined : data instanceof Blob ? await blobRequestBody(data) : JSON.stringify(data);
     return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
+      gmXhr({
         method,
         url: `${apiBase}/api${path}`,
-        ...(body !== undefined ? { headers: { 'Content-Type': contentType }, data: body } : {}),
+        headers: {
+          'X-WME-Requests-Origin': location.origin,
+          ...(body !== undefined ? { 'Content-Type': contentType } : {}),
+        },
+        ...(body !== undefined ? { data: body } : {}),
         timeout: REQUEST_TIMEOUT_MS,
         onload: (res) => {
           let parsed;
@@ -1981,8 +2305,8 @@
   // Verbose diagnostics (SDK object dumps) run on every selection change, so they're
   // gated behind this flag instead of always paying the JSON.stringify/string-build
   // cost. Enable via `GM_setValue('wmereq-debug', true)` in the console when diagnosing
-  // an SDK method-resolution issue.
-  const DEBUG = GM_getValue('wmereq-debug', false);
+  // an SDK method-resolution issue. Read at startup by loadSettings().
+  let DEBUG = false;
   function debugLog(msg) {
     if (DEBUG) log(msg);
   }
@@ -1996,5 +2320,10 @@
     }
   }
   // ── Start ─────────────────────────────────────────────────────────────────────
-  bootstrap();
+  loadStorage()
+    .catch((e) => log('Failed to load saved settings: ' + errorMessage(e)))
+    .then(() => {
+      loadSettings();
+      bootstrap();
+    });
 })();

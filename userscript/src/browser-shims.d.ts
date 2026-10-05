@@ -17,3 +17,18 @@ interface MediaStreamTrack {
 interface ImageCapture {
   grabFrame(): Promise<ImageBitmap>;
 }
+
+// Non-standard geometry estimateViewportInFrame() in main.user.ts uses where present:
+// mozInnerScreenX/Y (Firefox) is the content area's position on screen, and
+// screen.left/top (Firefox) / availLeft/availTop (Chrome, Safari) locate the monitor.
+interface Window {
+  readonly mozInnerScreenX?: number;
+  readonly mozInnerScreenY?: number;
+}
+
+interface Screen {
+  readonly left?: number;
+  readonly top?: number;
+  readonly availLeft?: number;
+  readonly availTop?: number;
+}

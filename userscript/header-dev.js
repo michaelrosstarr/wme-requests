@@ -11,6 +11,9 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_info
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.xmlHttpRequest
 // @grant        unsafeWindow
 // @license MIT
 // @connect      requests.wmekit.com

@@ -1,6 +1,24 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Alert, Badge, Container, Paper, Progress, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
-import { useUserReport } from '@/lib/queries'
+import { useState } from 'react'
+import {
+  Alert,
+  Badge,
+  Button,
+  Container,
+  Group,
+  Paper,
+  Progress,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { Ban } from 'lucide-react'
+import { useBlockedSubmitters, useMe, useUnblockSubmitter, useUserReport } from '@/lib/queries'
+import { confirmDialog } from '@/lib/dialogs'
+import BlockSubmitterModal from '@/components/BlockSubmitterModal'
 import { TypeBadge, TYPE_COLORS, TYPE_LABELS } from '@/lib/labels'
 import type { RequestType } from '@/lib/types'
 import TableLoadingRow from '@/components/TableLoadingRow'
@@ -15,7 +33,9 @@ import {
   TypeLegend,
 } from '@/components/ReportCharts'
 
-export const Route = createFileRoute('/_protected/reports')({ component: Reports })
+export const Route = createFileRoute('/_protected/reports')({
+  component: Reports,
+})
 
 const COL_SPAN = 4 + CHART_TYPE_ORDER.length
 const TOP_N = 10
@@ -26,6 +46,37 @@ function Reports() {
   const { data, isPending, isError, error } = useUserReport()
   const rows = data?.data ?? []
   const countries = data?.countries ?? []
+
+  // Blocking is global-only (see src/lib/blocks.ts), so only global users get the Block column.
+  const canBlock = !!useMe().data?.isGlobal
+  const blockedByName = new Map((useBlockedSubmitters(canBlock).data ?? []).map((b) => [b.username.toLowerCase(), b]))
+  const [blockUsername, setBlockUsername] = useState<string | null>(null)
+  const unblockSubmitter = useUnblockSubmitter()
+  const colSpan = COL_SPAN + (canBlock ? 1 : 0)
+
+  async function handleUnblock(username: string) {
+    const block = blockedByName.get(username.toLowerCase())
+    if (!block) return
+    const ok = await confirmDialog({
+      title: 'Unblock submitter',
+      message: `${block.username} will be able to submit requests again.`,
+      confirmLabel: 'Unblock',
+    })
+    if (!ok) return
+    unblockSubmitter.mutate(block.id, {
+      onSuccess: () =>
+        notifications.show({
+          color: 'green',
+          message: `Unblocked ${block.username}.`,
+        }),
+      onError: (e) =>
+        notifications.show({
+          color: 'red',
+          title: 'Could not unblock',
+          message: (e as Error).message,
+        }),
+    })
+  }
 
   const typeTotals = Object.fromEntries(
     CHART_TYPE_ORDER.map((t) => [t, rows.reduce((sum, r) => sum + r.counts[t], 0)]),
@@ -77,11 +128,7 @@ function Reports() {
           <StatTile label="Total requests" loading={isPending} value={grandTotal.toLocaleString()} />
           <StatTile label="Contributors" loading={isPending} value={rows.length.toLocaleString()} />
           <StatTile label="Countries" loading={isPending} value={countries.length.toLocaleString()} />
-          <StatTile
-            label="Most common type"
-            loading={isPending}
-            value={topType ? <TypeBadge type={topType} /> : '—'}
-          />
+          <StatTile label="Most common type" loading={isPending} value={topType ? <TypeBadge type={topType} /> : '—'} />
         </SimpleGrid>
 
         <SimpleGrid cols={{ base: 1, md: 2 }}>
@@ -154,49 +201,82 @@ function Reports() {
                   ))}
                   <Table.Th>Split</Table.Th>
                   <Table.Th>Majority Type</Table.Th>
+                  {canBlock && <Table.Th />}
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {isPending && <TableLoadingRow colSpan={COL_SPAN} />}
+                {isPending && <TableLoadingRow colSpan={colSpan} />}
                 {empty && (
                   <Table.Tr>
-                    <Table.Td colSpan={COL_SPAN}>
+                    <Table.Td colSpan={colSpan}>
                       <Text c="dimmed" ta="center">
                         No requests with a recorded username yet.
                       </Text>
                     </Table.Td>
                   </Table.Tr>
                 )}
-                {rows.map((r) => (
-                  <Table.Tr key={r.submitted_by}>
-                    <Table.Td>{r.submitted_by}</Table.Td>
-                    <Table.Td>{r.total}</Table.Td>
-                    {CHART_TYPE_ORDER.map((t) => (
-                      <Table.Td key={t}>{r.counts[t]}</Table.Td>
-                    ))}
-                    <Table.Td style={{ minWidth: 120 }}>
-                      <Progress.Root size="lg">
-                        {CHART_TYPE_ORDER.map((t) => (
-                          <Progress.Section key={t} value={(r.counts[t] / r.total) * 100} color={TYPE_COLORS[t]} />
-                        ))}
-                      </Progress.Root>
-                    </Table.Td>
-                    <Table.Td>
-                      {r.majority_type === 'tie' ? (
-                        <Badge color="gray" variant="light">
-                          Tie
-                        </Badge>
-                      ) : (
-                        <TypeBadge type={r.majority_type} />
+                {rows.map((r) => {
+                  const isBlocked = blockedByName.has(r.submitted_by.toLowerCase())
+                  return (
+                    <Table.Tr key={r.submitted_by}>
+                      <Table.Td>
+                        <Group gap={6} wrap="nowrap">
+                          {r.submitted_by}
+                          {isBlocked && (
+                            <Badge size="xs" color="red" variant="light">
+                              Blocked
+                            </Badge>
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>{r.total}</Table.Td>
+                      {CHART_TYPE_ORDER.map((t) => (
+                        <Table.Td key={t}>{r.counts[t]}</Table.Td>
+                      ))}
+                      <Table.Td style={{ minWidth: 120 }}>
+                        <Progress.Root size="lg">
+                          {CHART_TYPE_ORDER.map((t) => (
+                            <Progress.Section key={t} value={(r.counts[t] / r.total) * 100} color={TYPE_COLORS[t]} />
+                          ))}
+                        </Progress.Root>
+                      </Table.Td>
+                      <Table.Td>
+                        {r.majority_type === 'tie' ? (
+                          <Badge color="gray" variant="light">
+                            Tie
+                          </Badge>
+                        ) : (
+                          <TypeBadge type={r.majority_type} />
+                        )}
+                      </Table.Td>
+                      {canBlock && (
+                        <Table.Td>
+                          {isBlocked ? (
+                            <Button size="xs" variant="subtle" onClick={() => handleUnblock(r.submitted_by)}>
+                              Unblock
+                            </Button>
+                          ) : (
+                            <Button
+                              size="xs"
+                              variant="subtle"
+                              color="red"
+                              leftSection={<Ban size={14} />}
+                              onClick={() => setBlockUsername(r.submitted_by)}
+                            >
+                              Block
+                            </Button>
+                          )}
+                        </Table.Td>
                       )}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                    </Table.Tr>
+                  )
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
         </Paper>
       </Stack>
+      <BlockSubmitterModal opened={!!blockUsername} username={blockUsername} onClose={() => setBlockUsername(null)} />
     </Container>
   )
 }

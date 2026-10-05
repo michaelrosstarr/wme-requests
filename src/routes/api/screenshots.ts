@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { apiRoute } from '@/lib/http'
+import { apiRoute, requireWazeOrigin } from '@/lib/http'
 import { uploadScreenshot } from '@/lib/screenshots'
 
 export const Route = createFileRoute('/api/screenshots')({
@@ -7,8 +7,9 @@ export const Route = createFileRoute('/api/screenshots')({
     handlers: apiRoute({
       // Public: called by the userscript before creating the request — see
       // src/lib/requests.ts's createRequest for why the key is attached at creation
-      // time rather than via a follow-up authenticated call.
-      POST: { public: true, handler: ({ request }) => uploadScreenshot(request) },
+      // time rather than via a follow-up authenticated call. Limited to Waze pages, like
+      // POST /api/requests.
+      POST: { public: true, handler: ({ request }) => requireWazeOrigin(request) ?? uploadScreenshot(request) },
     }),
   },
 })

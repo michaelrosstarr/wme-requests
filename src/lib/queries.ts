@@ -3,6 +3,7 @@ import apiFetch from './api-client'
 import { subscribeToPush } from './push-client'
 import type {
   AdminUser,
+  BlockedSubmitter,
   Channel,
   Country,
   Credential,
@@ -70,7 +71,10 @@ export interface RequestsFilter {
 }
 
 export function useRequests(filter: RequestsFilter) {
-  const search = new URLSearchParams({ limit: String(filter.limit), offset: String(filter.offset) })
+  const search = new URLSearchParams({
+    limit: String(filter.limit),
+    offset: String(filter.offset),
+  })
   if (filter.countryId) search.set('country_id', filter.countryId)
   if (filter.regionId) search.set('region_id', filter.regionId)
   if (filter.type) search.set('type', filter.type)
@@ -92,7 +96,12 @@ export function useRequestStats() {
         apiFetch<RequestsResponse>('/requests?status=in_progress&limit=1'),
         apiFetch<RequestsResponse>('/requests?status=completed&limit=1'),
       ])
-      return { total: all.total, pending: pending.total, inProgress: inProgress.total, completed: completed.total }
+      return {
+        total: all.total,
+        pending: pending.total,
+        inProgress: inProgress.total,
+        completed: completed.total,
+      }
     },
   })
 }
@@ -101,7 +110,10 @@ export function useUpdateRequestStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: { id: number; status: Status }) =>
-      apiFetch(`/requests/${vars.id}`, { method: 'PUT', body: JSON.stringify({ status: vars.status }) }),
+      apiFetch(`/requests/${vars.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: vars.status }),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['requests'] }),
   })
 }
@@ -128,7 +140,10 @@ export function useUpdateRequestsStatus() {
     mutationFn: (vars: { ids: number[]; status: Status }) =>
       Promise.all(
         vars.ids.map((id) =>
-          apiFetch(`/requests/${id}`, { method: 'PUT', body: JSON.stringify({ status: vars.status }) }),
+          apiFetch(`/requests/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: vars.status }),
+          }),
         ),
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['requests'] }),
@@ -156,7 +171,10 @@ export function useUpdateCountry() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: { id: number; name: string; code: string }) =>
-      apiFetch(`/countries/${vars.id}`, { method: 'PUT', body: JSON.stringify({ name: vars.name, code: vars.code }) }),
+      apiFetch(`/countries/${vars.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: vars.name, code: vars.code }),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['countries'] }),
   })
 }
@@ -195,7 +213,10 @@ export function useCreateChannel() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: { countryId: string } & ChannelFormValues) =>
-      apiFetch(`/countries/${vars.countryId}/channels`, { method: 'POST', body: JSON.stringify(vars) }),
+      apiFetch(`/countries/${vars.countryId}/channels`, {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      }),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['channels', vars.countryId] }),
   })
 }
@@ -204,7 +225,10 @@ export function useUpdateChannel() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: { id: number; countryId: string } & ChannelFormValues) =>
-      apiFetch(`/channels/${vars.id}`, { method: 'PUT', body: JSON.stringify(vars) }),
+      apiFetch(`/channels/${vars.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(vars),
+      }),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ['channels', vars.countryId] }),
   })
 }
@@ -243,7 +267,10 @@ export function useCreateCredential() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: CredentialFormValues) =>
-      apiFetch<Credential>('/credentials', { method: 'POST', body: JSON.stringify(vars) }),
+      apiFetch<Credential>('/credentials', {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
   })
 }
@@ -252,7 +279,10 @@ export function useUpdateCredential() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: { id: number; label: string; payload?: Record<string, unknown> }) =>
-      apiFetch<Credential>(`/credentials/${vars.id}`, { method: 'PUT', body: JSON.stringify(vars) }),
+      apiFetch<Credential>(`/credentials/${vars.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(vars),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
   })
 }
@@ -313,9 +343,41 @@ export function useUpdateUserAccess() {
     mutationFn: (vars: { id: string } & UserAccessValues) =>
       apiFetch(`/users/${vars.id}/access`, {
         method: 'PUT',
-        body: JSON.stringify({ isGlobal: vars.isGlobal, countryIds: vars.countryIds }),
+        body: JSON.stringify({
+          isGlobal: vars.isGlobal,
+          countryIds: vars.countryIds,
+        }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+// Only global users can list blocks; pass enabled=false for anyone else to skip the 403.
+export function useBlockedSubmitters(enabled = true) {
+  return useQuery({
+    queryKey: ['blocked-submitters'],
+    queryFn: () => apiFetch<BlockedSubmitter[]>('/blocked-submitters'),
+    enabled,
+  })
+}
+
+export function useBlockSubmitter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { username: string; reason: string | null }) =>
+      apiFetch<BlockedSubmitter>('/blocked-submitters', {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['blocked-submitters'] }),
+  })
+}
+
+export function useUnblockSubmitter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiFetch(`/blocked-submitters/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['blocked-submitters'] }),
   })
 }
 

@@ -20,7 +20,12 @@ Submit **downlock** and **imagery** requests straight from the Waze Map Editor �
 Quick-pick chips for common reasons (Adjust Speed Limit, Add Speed Bump, Fix Geometry, Add Junction Box, House Numbers, Turn Restrictions) plus a free-text field for anything else — captured automatically in the request notes.
 
 ### Optional viewport screenshot
-In browsers that support screen capture (Chrome, Edge; in Firefox the shared window is attached uncropped), attach a screenshot of the current map viewport to your request with one click, so moderators can see exactly what you're seeing.
+In browsers that support screen capture, attach a screenshot of the current map viewport to your request with one click, so moderators can see exactly what you're seeing.
+
+- **Chrome and Edge** share the current tab, and the image is cropped to the map automatically.
+- **Firefox and Safari** can't share a single tab, so share the browser window or the whole screen. The script works out where the map is and crops to it. If it can't (for example with page zoom or docked dev tools), the editor opens with the **Crop** tool selected so you can drag around the map yourself.
+
+The editor opens after every capture. Use **Crop** to adjust what's included, **Full image** to undo the crop, and **Circle** / **Arrow** to point things out. **Edit Screenshot** reopens it later with your crop and markup intact.
 
 ### Works with your community's setup
 - Instant notifications to **Slack**, **Discord**, **Telegram**, **email**, or a custom webhook — configured by your community's admins, not you

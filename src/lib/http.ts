@@ -32,11 +32,31 @@ function corsHeaders(requestOrigin: string | null) {
   const allowedOrigin = resolveAllowedOrigin(requestOrigin)
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': `Content-Type,${PAGE_ORIGIN_HEADER}`,
     Vary: 'Origin',
   }
   if (allowedOrigin) headers['Access-Control-Allow-Origin'] = allowedOrigin
   return headers
+}
+
+// The Waze pages the userscript runs on, the only place requests may be submitted from.
+const WAZE_ORIGINS = ['https://waze.com', 'https://www.waze.com', 'https://beta.waze.com']
+// GM_xmlhttpRequest is sent by the userscript manager, so the browser gives it the extension's
+// Origin (or none) rather than waze.com's. The userscript names the page it's running on here.
+export const PAGE_ORIGIN_HEADER = 'X-WME-Requests-Origin'
+const EXTENSION_ORIGIN = /^[a-z-]+-extension:\/\//
+
+/**
+ * A 403 unless the request comes from a Waze page: a browser-set Origin must be a Waze origin,
+ * and a request from a userscript manager (extension Origin, or none) must name one in
+ * PAGE_ORIGIN_HEADER. This stops other websites submitting through a visitor's browser, and
+ * casual use of the API outside WME; a non-browser client can still send any headers it likes.
+ */
+export function requireWazeOrigin(request: Request) {
+  const origin = request.headers.get('Origin')
+  const pageOrigin = !origin || EXTENSION_ORIGIN.test(origin) ? request.headers.get(PAGE_ORIGIN_HEADER) : origin
+  if (pageOrigin && WAZE_ORIGINS.includes(pageOrigin)) return null
+  return err('Requests can only be submitted from the Waze Map Editor', 403, { code: 'wrong_origin' })
 }
 
 // `setCookies`: refreshed session cookies from the account service, passed on to the browser.

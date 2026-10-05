@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { apiRoute } from '@/lib/http'
+import { apiRoute, requireWazeOrigin } from '@/lib/http'
 import { getRequests, createRequest } from '@/lib/requests'
 import { captureServerEvent } from '@/lib/posthog-server'
 
@@ -10,10 +10,13 @@ export const Route = createFileRoute('/api/requests')({
       // caller's assigned countries.
       GET: ({ request, access }) => getRequests(access!, new URL(request.url).searchParams),
       // Public: this is the endpoint the Tampermonkey userscript calls cross-origin from
-      // waze.com to submit new requests. It has no way to do an interactive login.
+      // waze.com to submit new requests. It has no way to do an interactive login, so it's only
+      // limited to Waze pages (requireWazeOrigin).
       POST: {
         public: true,
         handler: async ({ request }) => {
+          const denied = requireWazeOrigin(request)
+          if (denied) return denied
           const body = (await request.json().catch(() => ({}))) as Parameters<typeof createRequest>[0]
           const response = await createRequest(body)
           if (response.ok) {
