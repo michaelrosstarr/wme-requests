@@ -55,7 +55,7 @@ const SECTIONS: HelpSection[] = [
       'Posts the same embed as the WME Requests bot, to a channel picked from a list — no webhook to create or paste.',
     steps: [
       <>
-        Add a channel, choose <strong>Discord (Bot)</strong>, and click <strong>Add bot to a Discord server</strong>.
+        Add a channel, choose <strong>Discord (Bot)</strong>, and click <strong>Add bot</strong>.
         You need the <strong>Manage Server</strong> permission in that server.
       </>,
       <>

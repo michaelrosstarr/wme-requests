@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Checkbox, Code, Group, Loader, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
-import { ExternalLink, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useForm } from '@mantine/form'
 import {
   useCreateChannel,
@@ -307,11 +307,12 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
             {isDiscordBot && (
               <>
                 <Text size="xs" c="dimmed">
-                  Posts as the WME Requests bot — no webhook needed. Add the bot to your Discord server first (you
-                  need the Manage Server permission there), then come back to this tab and pick the channel.
+                  Posts as the WME Requests bot — no webhook needed. Click <strong>Add bot</strong> to add it to your Discord
+                  server (you need the Manage Server permission there), then come back to this tab and pick the channel.
                 </Text>
-                <div>
+                <Group align="flex-end">
                   <Select
+                    flex={1}
                     label="Discord Server"
                     placeholder={discordGuilds.length ? 'Select a server…' : 'Add the bot to a server first'}
                     data={discordGuilds.map((g) => ({ value: g.guild_id, label: g.guild_name }))}
@@ -328,16 +329,14 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
                     href={`/api/discord/install?country_id=${countryId}`}
                     target="_blank"
                     rel="noopener"
-                    variant="subtle"
-                    size="xs"
-                    mt={4}
-                    px={0}
-                    leftSection={<ExternalLink size={14} />}
+                    title="Add the bot to a Discord server (opens in a new tab)"
+                    variant="light"
+                    leftSection={<Plus size={14} />}
                     disabled={saving}
                   >
-                    Add bot to a Discord server
+                    Add bot
                   </Button>
-                </div>
+                </Group>
                 <Select
                   label="Discord Channel"
                   placeholder={form.values.discord_guild_id ? 'Select a channel…' : 'Select a server first'}

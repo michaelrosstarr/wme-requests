@@ -159,7 +159,7 @@ of this. ("Sign in with Discord" is separate and lives on the account service.)
    `DISCORD_CLIENT_SECRET`) — `.dev.vars` overrides the `wrangler.jsonc` var.
 4. Run `npm run cf-typegen`.
 
-How servers get linked: **Add bot to a Discord server** in the channel form opens Discord's
+How servers get linked: **Add bot** in the channel form opens Discord's
 "Add to server" page (an OAuth2 code-grant install). Discord redirects back to
 `/api/discord/callback`, which checks the encrypted `state` (country, user, 10-minute expiry —
 encrypted with `CHANNEL_CREDENTIALS_KEY`, so set that from step 9 too) and records the server
