@@ -106,6 +106,7 @@ export interface AdminUser {
 export interface Me {
   userId: string
   isGlobal: boolean
+  isSuperAdmin: boolean
   countryIds: number[]
 }
 

@@ -222,15 +222,17 @@ function Admin() {
                     >
                       Edit
                     </Button>
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="light"
-                      leftSection={<Trash2 size={14} />}
-                      onClick={() => handleDeleteCountry(c.id)}
-                    >
-                      Delete
-                    </Button>
+                    {me?.isSuperAdmin && (
+                      <Button
+                        size="xs"
+                        color="red"
+                        variant="light"
+                        leftSection={<Trash2 size={14} />}
+                        onClick={() => handleDeleteCountry(c.id)}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </Group>
                 </Group>
               </Card>

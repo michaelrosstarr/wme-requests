@@ -1,7 +1,11 @@
 import { env } from 'cloudflare:workers'
+import { getDb } from './db'
 import { json, err } from './http'
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
+// Screenshots are deleted a week after upload by the bucket's R2 lifecycle rule
+// (expire-screenshots-7d, see DEPLOYMENT.md).
+const SCREENSHOT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 // Absolute URL (on APP_URL, this app's own origin) so external services
 // (Slack/Discord/email/Sheets) can fetch the image.
@@ -31,7 +35,17 @@ export async function serveScreenshot(key: string) {
   return new Response(object.body, {
     headers: {
       'Content-Type': object.httpMetadata?.contentType || 'image/png',
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cache-Control': `public, max-age=${SCREENSHOT_TTL_MS / 1000}, immutable`,
     },
   })
+}
+
+// R2 expires the images itself; this clears screenshot_key on requests whose image is gone (or
+// about to be), so the dashboard doesn't link to a 404.
+export async function clearExpiredScreenshotKeys() {
+  const cutoff = new Date(Date.now() - SCREENSHOT_TTL_MS).toISOString()
+  await getDb()
+    .prepare(`UPDATE requests SET screenshot_key = NULL WHERE screenshot_key IS NOT NULL AND created_at < ?`)
+    .bind(cutoff)
+    .run()
 }

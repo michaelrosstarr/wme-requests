@@ -215,6 +215,9 @@ export async function removeUserAccess(access: UserAccess, id: string) {
   const denied = requireGlobal(access)
   if (denied) return denied
   if (id === access.userId) return err("You can't remove your own access", 400)
+  // Deleting the row would silently drop superadmin, which only the database may change.
+  const target = await dbFirst<{ is_superadmin: number }>(`SELECT is_superadmin FROM user_access WHERE user_id = ?`, [id])
+  if (target?.is_superadmin === 1) return err('Superadmins can only be changed in the database', 403)
   const db = getDb()
   const [, res] = await db.batch([
     db.prepare(`DELETE FROM user_countries WHERE user_id = ?`).bind(id),

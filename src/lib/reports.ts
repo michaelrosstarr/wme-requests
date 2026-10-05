@@ -9,9 +9,8 @@ function emptyCounts(): UserCounts {
 }
 
 export async function getUserReport(access: UserAccess) {
-  // Requests are purged 24h after submission (see src/server-entry.ts), rolling their counts
-  // into request_stats first — so a full picture needs both: live rows for anything not yet
-  // purged, plus the aggregated historical counts.
+  // Requests used to be purged 24h after submission, rolling their counts into request_stats
+  // first — so a full picture needs both: live rows, plus the counts of the purged ones.
   const liveScope = countryScopeSQL(access, 'r')
   const liveWhere = ["submitted_by IS NOT NULL", "submitted_by != ''"]
   const liveParams: number[] = []

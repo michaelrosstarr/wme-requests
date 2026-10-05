@@ -4,7 +4,7 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 export const Route = createFileRoute('/privacy')({ component: Privacy })
 
 const CONTACT_EMAIL = 'wazer@wmekit.com'
-const EFFECTIVE_DATE = '2 October 2026'
+const EFFECTIVE_DATE = '5 October 2026'
 // The account-wide policy, which this one supplements.
 const MAIN_POLICY_URL = 'https://auth.wmekit.com/privacy'
 
@@ -265,11 +265,11 @@ function Privacy() {
           <Stack gap="sm">
             <Title order={2}>8. Data retention</Title>
             <Text>
-              Request records (including notes, screenshots, and permalinks) are automatically and permanently
-              deleted 24 hours after submission, or sooner if an admin removes them manually. Before a request is
-              deleted, an aggregate count of it (submitting editor, country, and request type — no permalink, notes,
-              or screenshot) is added to a running per-user tally, which we keep indefinitely to power the Reports
-              feature. Account and configuration data (users, countries, channels) is kept for as long as they're
+              Screenshots attached to requests are automatically and permanently deleted 7 days after upload.
+              Request records (notes, permalinks, lock level, and submitter username) are kept until an admin
+              removes them, or until the country they belong to is deleted. Requests submitted before 5 October
+              2026 were deleted 24 hours after submission, leaving only an aggregate per-user count (submitting
+              editor, country, and request type), which we keep indefinitely to power the Reports feature. Account and configuration data (users, countries, channels) is kept for as long as they're
               operationally useful, and deleted when an admin removes them. Analytics events in PostHog follow
               PostHog's own retention settings for our account.
             </Text>

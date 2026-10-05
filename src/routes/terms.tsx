@@ -4,7 +4,7 @@ import { Anchor, Card, Container, List, Stack, Text, Title } from '@mantine/core
 export const Route = createFileRoute('/terms')({ component: Terms })
 
 const CONTACT_EMAIL = 'wazer@wmekit.com'
-const EFFECTIVE_DATE = '2 October 2026'
+const EFFECTIVE_DATE = '5 October 2026'
 // The account-wide terms, which these supplement.
 const MAIN_TERMS_URL = 'https://auth.wmekit.com/terms'
 
@@ -100,9 +100,8 @@ function Terms() {
               or violate applicable law.
             </Text>
             <Text>
-              Request records are automatically and permanently deleted 24 hours after submission. Any decision or
-              notification you want to keep a record of should be captured elsewhere (e.g. the notification channel
-              it was routed to) before that window closes.
+              Screenshots attached to requests are automatically and permanently deleted 7 days after upload.
+              Request records are kept until an admin removes them.
             </Text>
           </Stack>
         </Card>

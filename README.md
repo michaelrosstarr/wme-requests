@@ -60,6 +60,13 @@ npm run db:create
 #   "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
+Create the screenshots bucket; its lifecycle rule deletes each screenshot 7 days after upload:
+
+```bash
+wrangler r2 bucket create wme-requests-screenshots
+wrangler r2 bucket lifecycle add wme-requests-screenshots expire-screenshots-7d "" --expire-days 7
+```
+
 ### 4 — Apply the schema
 
 ```bash
@@ -85,6 +92,13 @@ access", which also creates your local user row), then grant yourself global acc
 
 ```bash
 wrangler d1 execute wme-requests --remote --command "INSERT INTO user_access (user_id, is_global) SELECT id, 1 FROM \"user\" WHERE email = 'you@example.com'"
+```
+
+Deleting a country (and with it its channels and requests) needs **superadmin**, which the app
+never sets or clears. Grant it in the database (`is_superadmin = 0` revokes it):
+
+```bash
+wrangler d1 execute wme-requests --remote --command "UPDATE user_access SET is_superadmin = 1 WHERE user_id = (SELECT id FROM \"user\" WHERE email = 'you@example.com')"
 ```
 
 Global users add everyone else from **Admin → Users → Add user**.

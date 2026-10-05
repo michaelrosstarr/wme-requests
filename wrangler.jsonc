@@ -15,8 +15,8 @@
 	},
 	"upload_source_maps": true,
 	"triggers": {
-		// Daily at 03:00 UTC — purges requests older than 24h (see the `scheduled` handler
-		// in src/server-entry.ts and Terms of Service §4).
+		// Daily at 03:00 UTC — clears requests' links to screenshots older than a week, which the
+		// bucket's R2 lifecycle rule deletes (see the `scheduled` handler in src/server-entry.ts).
 		"crons": ["0 3 * * *"]
 	},
 	"vars": {
@@ -64,6 +64,7 @@
 		{
 			"binding": "SCREENSHOTS",
 			// Replace with the name you passed to: wrangler r2 bucket create <name>
+			// Objects expire after 7 days via a lifecycle rule on the bucket (see DEPLOYMENT.md).
 			"bucket_name": "wme-requests-screenshots"
 		}
 	]

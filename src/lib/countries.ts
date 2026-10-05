@@ -68,7 +68,7 @@ export async function updateCountry(
 }
 
 export async function deleteCountry(access: UserAccess, id: number) {
-  if (!canAccessCountry(access, id)) return err('Country not found', 404)
+  if (!access.isSuperAdmin) return err('Only superadmins can delete countries', 403)
   const result = await dbRun('DELETE FROM countries WHERE id = ?', [id])
   if (!result.meta.changes) return err('Country not found', 404)
   return new Response(null, { status: 204 })

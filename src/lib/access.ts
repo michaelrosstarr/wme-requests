@@ -3,6 +3,8 @@ import { dbAll, dbFirst } from './db'
 export interface UserAccess {
   userId: string
   isGlobal: boolean
+  // Set only in the database (see migrations/0026_superadmin.sql); needed to delete countries.
+  isSuperAdmin: boolean
   countryIds: number[]
 }
 
@@ -11,7 +13,10 @@ export interface UserAccess {
  * but only users an admin has added (a `user_access` row) get in.
  */
 export async function getUserAccess(userId: string): Promise<UserAccess | null> {
-  const row = await dbFirst<{ is_global: number }>(`SELECT is_global FROM user_access WHERE user_id = ?`, [userId])
+  const row = await dbFirst<{ is_global: number; is_superadmin: number }>(
+    `SELECT is_global, is_superadmin FROM user_access WHERE user_id = ?`,
+    [userId],
+  )
   if (!row) return null
   const isGlobal = row.is_global === 1
   const countryIds = isGlobal
@@ -19,7 +24,7 @@ export async function getUserAccess(userId: string): Promise<UserAccess | null> 
     : (
         await dbAll<{ country_id: number }>(`SELECT country_id FROM user_countries WHERE user_id = ?`, [userId])
       ).map((r) => r.country_id)
-  return { userId, isGlobal, countryIds }
+  return { userId, isGlobal, isSuperAdmin: row.is_superadmin === 1, countryIds }
 }
 
 export function canAccessCountry(access: UserAccess, countryId: number) {
