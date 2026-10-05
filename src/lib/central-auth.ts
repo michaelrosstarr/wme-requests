@@ -44,6 +44,16 @@ interface AuthService {
     emailSent: boolean
   }>
   sendPasswordEmail(input: { userId: string; redirect?: string }): Promise<void>
+  /** Emails an existing user in the shared WMEKit layout (wmeAuth's EmailContent in src/lib/system-email.ts). */
+  sendUserEmail(input: { userId: string; subject: string; content: UserEmailContent }): Promise<void>
+}
+
+export interface UserEmailContent {
+  preheader: string
+  heading: string
+  paragraphs: string[]
+  button?: { label: string; url: string }
+  footnote?: string
 }
 
 // Skips the get-session call when there's no session cookie at all. wmeAuth's cookie prefix was

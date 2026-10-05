@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { dbAll, dbFirst, getDb, isEmail } from './db'
 import { json, err } from './http'
 import { authService, ensureLocalUser, type AccountUser } from './central-auth'
-import type { UserAccess } from './access'
+import { getUserAccess, type UserAccess } from './access'
 
 // Accounts live in the WMEKit account service (wmeAuth); this app only decides who gets in
 // and what they can see. "Users" here are the accounts with a user_access row. Names, emails and
@@ -117,6 +117,45 @@ async function writeAccess(userId: string, isGlobal: boolean, countryIds: number
 }
 
 /**
+ * Tells someone what they've just been given: everything on a new grant, or only what's new when
+ * existing access is widened (nothing is sent when it's narrowed or unchanged). Sent by the
+ * account service, which owns the WMEKit email layout and sender. Never fails the grant itself.
+ */
+async function emailAccessGranted(userId: string, now: { isGlobal: boolean; countryIds: number[] }, before?: UserAccess | null) {
+  const newlyGlobal = now.isGlobal && !before?.isGlobal
+  const newCountryIds = now.isGlobal || before?.isGlobal ? [] : now.countryIds.filter((id) => !before?.countryIds.includes(id))
+  if (!newlyGlobal && !newCountryIds.length) return
+  try {
+    const names = newCountryIds.length
+      ? (
+          await dbAll<{ name: string }>(
+            `SELECT name FROM countries WHERE id IN (${newCountryIds.map(() => '?').join(',')}) ORDER BY name`,
+            newCountryIds,
+          )
+        ).map((c) => c.name)
+      : []
+    const what = newlyGlobal ? 'every country' : names.join(', ')
+    await authService().sendUserEmail({
+      userId,
+      subject: before ? 'Your WME Requests access has been updated' : "You've been given access to WME Requests",
+      content: {
+        preheader: `You can now see requests for ${what}.`,
+        heading: before ? 'Your access has been updated' : 'Welcome to WME Requests',
+        paragraphs: [
+          before
+            ? `A WME Requests admin has given you access to ${what}.`
+            : `A WME Requests admin has given you access. You can now see and manage requests for ${what}.`,
+          'Sign in with your WMEKit account to get started.',
+        ],
+        button: { label: 'Open WME Requests', url: new URL('/requests', env.APP_URL).href },
+      },
+    })
+  } catch (e) {
+    console.error('access-granted email failed', e)
+  }
+}
+
+/**
  * Gives someone access by email. The account service finds their WMEKit account or creates
  * one and emails them a link to set a password, which then brings them back here.
  */
@@ -143,6 +182,7 @@ export async function inviteUser(access: UserAccess, body: { name?: string; emai
   }
   await ensureLocalUser(user)
   await writeAccess(user.id, resolved.isGlobal, resolved.countryIds)
+  await emailAccessGranted(user.id, resolved)
   return json(await getRow(user.id), 201)
 }
 
@@ -161,10 +201,12 @@ export async function resetUserPassword(access: UserAccess, id: string) {
 export async function updateUserAccess(access: UserAccess, id: string, body: AccessBody) {
   const denied = requireGlobal(access)
   if (denied) return denied
-  if (!(await dbFirst(`SELECT 1 FROM user_access WHERE user_id = ?`, [id]))) return err('User not found', 404)
+  const before = await getUserAccess(id)
+  if (!before) return err('User not found', 404)
   const resolved = resolveAccess(body)
   if ('error' in resolved) return resolved.error
   await writeAccess(id, resolved.isGlobal, resolved.countryIds)
+  await emailAccessGranted(id, resolved, before)
   return json(await getRow(id))
 }
 
