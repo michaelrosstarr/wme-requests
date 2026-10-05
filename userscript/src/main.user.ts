@@ -272,6 +272,10 @@ function injectStyles(): void {
     #${PANEL_ID} .wmereq-lock-info { font-size: 12px; color: #555; margin-bottom: 8px; padding: 4px 8px; background:#fffde7; border-radius:4px; }
     #${PANEL_ID} .wmereq-optional { font-weight: 400; color: #888; }
     #${PANEL_ID} .wmereq-btn-block { width: 100%; margin: 0 0 8px; }
+    #${PANEL_ID} .wmereq-screenshot-row { margin-bottom: 8px; }
+    .wmereq-screenshot-row { display: flex; gap: 6px; }
+    .wmereq-screenshot-row .wmereq-btn { margin: 0; }
+    .wmereq-screenshot-row .wmereq-btn-screenshot { flex: 1 1 auto; }
     #${PANEL_ID} .wmereq-submit-row { display: flex; flex-wrap: wrap; gap: 6px; }
     #${PANEL_ID} .wmereq-submit-row .wmereq-btn { flex: 1 1 auto; margin: 0; }
     #${PANEL_ID} .wmereq-settings summary { font-weight: 600; color: #333; cursor: pointer; user-select: none; }
@@ -315,8 +319,26 @@ function injectStyles(): void {
     }
     #wmereq-reason-overlay .wmereq-chip:hover { background: #eee; }
     #wmereq-reason-overlay .wmereq-chip.active { background: #0a8cff; border-color: #0a8cff; color: #fff; }
-    #wmereq-reason-overlay .wmereq-btn-screenshot { width: 100%; box-sizing: border-box; margin: 12px 0 0; }
+    #wmereq-reason-overlay .wmereq-screenshot-row { margin-top: 12px; }
     #wmereq-reason-overlay .wmereq-reason-error { font-size: 11px; color: #c62828; margin-top: 6px; }
+    /* Above #wmereq-reason-overlay (9999), since the editor can be opened from it. */
+    #wmereq-shot-editor {
+      position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 10000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+      font-family: 'Rubik', sans-serif;
+    }
+    #wmereq-shot-editor .wmereq-shot-toolbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      background: #fff; border-radius: 8px; padding: 8px; box-shadow: 0 4px 24px rgba(0,0,0,.3);
+    }
+    #wmereq-shot-editor .wmereq-btn { margin: 0; }
+    #wmereq-shot-editor .wmereq-shot-tool.active { background: #0a8cff; color: #fff; }
+    #wmereq-shot-editor .wmereq-shot-sep { width: 1px; align-self: stretch; background: #ddd; margin: 0 4px; }
+    #wmereq-shot-editor canvas {
+      flex: 0 0 auto; max-width: 90vw; max-height: 80vh; border-radius: 4px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.4); cursor: crosshair; touch-action: none;
+    }
+    #wmereq-shot-editor .wmereq-shot-error { font-size: 12px; color: #c62828; background: #ffebee; padding: 5px 8px; border-radius: 4px; }
     #wmereq-floating-actions {
       position: fixed; top: 70px; left: 10px; z-index: 1000;
       display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
@@ -603,7 +625,10 @@ function buildPanelHTML(): string {
         <label>Notes <span class="wmereq-optional">(optional)</span></label>
         <textarea id="wmereq-notes" placeholder="Any extra context…"></textarea>
 
-        ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot wmereq-btn-block" id="wmereq-btn-screenshot">Attach Screenshot</button>` : ''}
+        ${screenshotCaptureSupported() ? `<div class="wmereq-screenshot-row">
+          <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot" id="wmereq-btn-screenshot">${capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot'}</button>
+          <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot-edit" id="wmereq-btn-screenshot-edit"${capturedScreenshotBlob ? '' : ' style="display:none"'}>Edit Screenshot</button>
+        </div>` : ''}
 
         <div class="wmereq-submit-row">
           ${QUICK_ACTION_TYPES.map((type) => `<button class="wmereq-btn wmereq-btn-${typeSlug(type)}" id="wmereq-btn-submit-${typeSlug(type)}" title="Submit a ${describeType(type)} request" style="display:none">${describeType(type)}</button>`).join('\n          ')}
@@ -649,6 +674,7 @@ function bindPanelEvents(): void {
   on('wmereq-settings-save', 'click', saveSettings);
   on('wmereq-fab-reset-pos', 'click', resetFabPosition);
   on('wmereq-btn-screenshot', 'click', () => captureScreenshotFromButton(byId<HTMLButtonElement>('wmereq-btn-screenshot'), (msg) => showStatus(msg, 'error')));
+  on('wmereq-btn-screenshot-edit', 'click', () => editScreenshot((msg) => showStatus(msg, 'error')));
   for (const type of QUICK_ACTION_TYPES) {
     on(`wmereq-btn-submit-${typeSlug(type)}`, 'click', () => submitRequest(type));
   }
@@ -662,6 +688,22 @@ function bindPanelEvents(): void {
 // bounding rect ourselves. screenshotCaptureSupported() only requires
 // getDisplayMedia, so browsers without any screen capture don't see the option.
 let capturedScreenshotBlob: Blob | null = null;
+// The unmarked capture and the markup drawn over it, kept so the editor can be reopened
+// from a clean image with the earlier shapes still undoable. capturedScreenshotBlob is
+// the original with these shapes flattened in (or the original itself, if none).
+let capturedScreenshotOriginal: Blob | null = null;
+let screenshotShapes: ScreenshotShape[] = [];
+
+// In image pixel coordinates, so shapes don't depend on the editor's display scale.
+// Circles are the ellipse inscribed in the (x1,y1)–(x2,y2) box; arrows point from 1 to 2.
+type ScreenshotShape = { kind: 'circle' | 'arrow'; x1: number; y1: number; x2: number; y2: number };
+
+function clearScreenshot(): void {
+  capturedScreenshotBlob = null;
+  capturedScreenshotOriginal = null;
+  screenshotShapes = [];
+  updateScreenshotButton();
+}
 
 // The server rejects uploads over 5MB, which a full-resolution PNG of satellite imagery
 // on a high-DPI screen easily exceeds — so the image is scaled down to this longest side
@@ -779,28 +821,208 @@ function updateScreenshotButton(): void {
   document.querySelectorAll<HTMLButtonElement>('.wmereq-btn-screenshot').forEach((btn) => {
     btn.textContent = capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot';
   });
+  document.querySelectorAll<HTMLButtonElement>('.wmereq-btn-screenshot-edit').forEach((btn) => {
+    btn.style.display = capturedScreenshotBlob ? '' : 'none';
+  });
 }
 
 // Captures into capturedScreenshotBlob, reporting failures via `onError`. `hideEl` (the
 // reason modal's overlay) is hidden for the duration so it doesn't end up in the image.
-// Returns whether a screenshot was captured.
+// On success, opens the markup editor over the new capture. Returns whether a screenshot
+// was captured.
 async function captureScreenshotFromButton(btn: HTMLButtonElement | null, onError: (message: string) => void, hideEl?: HTMLElement): Promise<boolean> {
   if (btn) { btn.disabled = true; btn.textContent = 'Capturing…'; }
   if (hideEl) hideEl.style.visibility = 'hidden';
+  let blob: Blob;
   try {
-    capturedScreenshotBlob = await captureViewportScreenshot();
-    return true;
+    blob = await captureViewportScreenshot();
   } catch (e) {
     const message = errorMessage(e);
     log('Screenshot capture failed: ' + message);
     onError(`Screenshot capture failed: ${message}`);
-    capturedScreenshotBlob = null;
+    clearScreenshot();
     return false;
   } finally {
     if (hideEl) hideEl.style.visibility = '';
     if (btn) btn.disabled = false;
-    updateScreenshotButton();
   }
+  capturedScreenshotBlob = capturedScreenshotOriginal = blob;
+  screenshotShapes = [];
+  updateScreenshotButton();
+  await editScreenshot(onError);
+  return true;
+}
+
+// Reopens the markup editor on the unmarked capture with the current shapes. Done
+// replaces the attached image; Cancel leaves it as it was.
+async function editScreenshot(onError: (message: string) => void): Promise<void> {
+  if (!capturedScreenshotOriginal) return;
+  try {
+    const result = await openScreenshotEditor(capturedScreenshotOriginal, screenshotShapes);
+    if (result) {
+      capturedScreenshotBlob = result.blob;
+      screenshotShapes = result.shapes;
+    }
+  } catch (e) {
+    const message = errorMessage(e);
+    log('Screenshot editor failed: ' + message);
+    onError(`Screenshot editor failed: ${message}`);
+  }
+  updateScreenshotButton();
+}
+
+// ── Screenshot markup editor ──────────────────────────────────────────────────
+// Full-screen overlay for drawing red circles and arrows over a capture. Shapes are kept
+// as data (not pixels) so Undo/Clear work and a later edit can restore them; Done
+// flattens them into a new JPEG. Resolves null on Cancel/Esc.
+const MARKUP_COLOR = '#e53935';
+// Drags shorter than this (in screen pixels) are treated as stray clicks.
+const MARKUP_MIN_DRAG_PX = 5;
+
+function drawMarkupShape(ctx: CanvasRenderingContext2D, shape: ScreenshotShape, lineWidth: number): void {
+  const { x1, y1, x2, y2 } = shape;
+  ctx.strokeStyle = MARKUP_COLOR;
+  ctx.fillStyle = MARKUP_COLOR;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (shape.kind === 'circle') {
+    ctx.ellipse((x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2, 0, 0, 2 * Math.PI);
+    ctx.stroke();
+    return;
+  }
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLength = lineWidth * 5;
+  // The shaft stops inside the arrowhead so its round cap doesn't poke out past the tip.
+  const shaftLength = Math.max(0, Math.hypot(x2 - x1, y2 - y1) - headLength * 0.8);
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 + Math.cos(angle) * shaftLength, y1 + Math.sin(angle) * shaftLength);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLength * Math.cos(angle - Math.PI / 7), y2 - headLength * Math.sin(angle - Math.PI / 7));
+  ctx.lineTo(x2 - headLength * Math.cos(angle + Math.PI / 7), y2 - headLength * Math.sin(angle + Math.PI / 7));
+  ctx.closePath();
+  ctx.fill();
+}
+
+async function openScreenshotEditor(original: Blob, initialShapes: ScreenshotShape[]): Promise<{ blob: Blob; shapes: ScreenshotShape[] } | null> {
+  const bitmap = await createImageBitmap(original);
+  const shapes = initialShapes.slice();
+  // Scaled to the image so markup stays visible on full-size (1920px) captures.
+  const lineWidth = Math.max(3, bitmap.width / 300);
+  let tool: ScreenshotShape['kind'] = 'circle';
+  let draft: ScreenshotShape | null = null;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'wmereq-shot-editor';
+  overlay.innerHTML = `
+    <div class="wmereq-shot-toolbar">
+      <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-shot-tool active" data-tool="circle">Circle</button>
+      <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-shot-tool" data-tool="arrow">Arrow</button>
+      <span class="wmereq-shot-sep"></span>
+      <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="undo">Undo</button>
+      <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="clear">Clear</button>
+      <span class="wmereq-shot-sep"></span>
+      <button type="button" class="wmereq-btn wmereq-btn-primary" data-action="done">Done</button>
+      <button type="button" class="wmereq-btn wmereq-btn-cancel" data-action="cancel">Cancel</button>
+    </div>
+    <canvas></canvas>
+    <div class="wmereq-shot-error" style="display:none"></div>`;
+  const canvas = overlay.querySelector('canvas')!;
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { bitmap.close(); throw new Error('Failed to get canvas context.'); }
+  const errEl = overlay.querySelector<HTMLElement>('.wmereq-shot-error')!;
+  const actionBtn = (action: string) => overlay.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
+
+  function redraw(): void {
+    ctx!.drawImage(bitmap, 0, 0);
+    for (const shape of shapes) drawMarkupShape(ctx!, shape, lineWidth);
+    if (draft) drawMarkupShape(ctx!, draft, lineWidth);
+    actionBtn('undo').disabled = actionBtn('clear').disabled = !shapes.length;
+  }
+
+  // Maps a pointer position to image pixels (the canvas is displayed scaled down).
+  function toImagePoint(e: PointerEvent): { x: number; y: number } {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const { x, y } = toImagePoint(e);
+    draft = { kind: tool, x1: x, y1: y, x2: x, y2: y };
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!draft) return;
+    const { x, y } = toImagePoint(e);
+    draft.x2 = x;
+    draft.y2 = y;
+    redraw();
+  });
+  canvas.addEventListener('pointerup', () => {
+    if (!draft) return;
+    const displayScale = canvas.getBoundingClientRect().width / canvas.width;
+    if (Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) * displayScale >= MARKUP_MIN_DRAG_PX) shapes.push(draft);
+    draft = null;
+    redraw();
+  });
+  canvas.addEventListener('pointercancel', () => { draft = null; redraw(); });
+
+  overlay.querySelectorAll<HTMLButtonElement>('.wmereq-shot-tool').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tool = btn.dataset.tool as ScreenshotShape['kind'];
+      overlay.querySelectorAll('.wmereq-shot-tool').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+  actionBtn('undo').addEventListener('click', () => { shapes.pop(); redraw(); });
+  actionBtn('clear').addEventListener('click', () => { shapes.length = 0; redraw(); });
+
+  document.body.appendChild(overlay);
+  redraw();
+
+  return new Promise((resolve) => {
+    function finish(result: { blob: Blob; shapes: ScreenshotShape[] } | null): void {
+      document.removeEventListener('keydown', onKeyDown, true);
+      overlay.remove();
+      bitmap.close();
+      resolve(result);
+    }
+    // Capture phase, so Esc doesn't also reach WME's own shortcuts.
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      finish(null);
+    }
+    document.addEventListener('keydown', onKeyDown, true);
+
+    actionBtn('cancel').addEventListener('click', () => finish(null));
+    actionBtn('done').addEventListener('click', async () => {
+      // Nothing drawn: keep the original rather than re-encoding it for no gain.
+      if (!shapes.length) { finish({ blob: original, shapes: [] }); return; }
+      const doneBtn = actionBtn('done');
+      doneBtn.disabled = true;
+      errEl.style.display = 'none';
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', SCREENSHOT_JPEG_QUALITY));
+      doneBtn.disabled = false;
+      if (!blob || blob.size > SCREENSHOT_MAX_BYTES) {
+        errEl.textContent = blob ? 'The marked-up screenshot is too large to upload (over 5MB).' : 'Failed to create an image from the canvas.';
+        errEl.style.display = '';
+        return;
+      }
+      log(`Screenshot marked up with ${shapes.length} shape(s): ${Math.round(blob.size / 1024)}KB.`);
+      finish({ blob, shapes });
+    });
+  });
 }
 
 // ── Selection helpers ─────────────────────────────────────────────────────────
@@ -1394,7 +1616,10 @@ function openReasonModal({ title, reasons, tooltips, requireLevel }: ReasonModal
         </div>
         <label>Additional details (optional)</label>
         <textarea id="wmereq-reason-custom" placeholder="Any extra context…"></textarea>
-        ${screenshotCaptureSupported() ? `<button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot" id="wmereq-reason-screenshot">${capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot'}</button>
+        ${screenshotCaptureSupported() ? `<div class="wmereq-screenshot-row">
+          <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot" id="wmereq-reason-screenshot">${capturedScreenshotBlob ? 'Screenshot attached (click to retake)' : 'Attach Screenshot'}</button>
+          <button type="button" class="wmereq-btn wmereq-btn-cancel wmereq-btn-screenshot-edit" id="wmereq-reason-screenshot-edit"${capturedScreenshotBlob ? '' : ' style="display:none"'}>Edit Screenshot</button>
+        </div>
         <div class="wmereq-reason-error" id="wmereq-reason-error" style="display:none"></div>` : ''}
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="wmereq-btn wmereq-btn-primary" id="wmereq-reason-confirm">Continue</button>
@@ -1415,22 +1640,24 @@ function openReasonModal({ title, reasons, tooltips, requireLevel }: ReasonModal
     // leaving it attached to whatever request is submitted next.
     let capturedHere = false;
     const shotBtn = dlg.querySelector<HTMLButtonElement>('#wmereq-reason-screenshot');
+    const errEl = dlg.querySelector<HTMLElement>('#wmereq-reason-error');
+    const showShotError = (msg: string) => {
+      errEl!.textContent = msg;
+      errEl!.style.display = '';
+    };
     shotBtn?.addEventListener('click', async () => {
-      const errEl = dlg.querySelector<HTMLElement>('#wmereq-reason-error')!;
-      errEl.style.display = 'none';
-      const ok = await captureScreenshotFromButton(shotBtn, (msg) => {
-        errEl.textContent = msg;
-        errEl.style.display = '';
-      }, dlg);
+      errEl!.style.display = 'none';
+      const ok = await captureScreenshotFromButton(shotBtn, showShotError, dlg);
       if (ok) capturedHere = true;
+    });
+    dlg.querySelector('#wmereq-reason-screenshot-edit')?.addEventListener('click', () => {
+      errEl!.style.display = 'none';
+      editScreenshot(showShotError);
     });
 
     function close(confirmed: boolean, reason?: string, level?: number | null): void {
       document.body.removeChild(dlg);
-      if (!confirmed && capturedHere) {
-        capturedScreenshotBlob = null;
-        updateScreenshotButton();
-      }
+      if (!confirmed && capturedHere) clearScreenshot();
       resolve(confirmed ? { confirmed: true, reason: reason ?? null, level: level ?? null } : { confirmed: false, reason: null, level: null });
     }
 
@@ -1624,8 +1851,7 @@ async function doSubmit(type: RequestType, { entity, countryId, regionId, lockLe
           : `Request #${results[0].id} submitted successfully.`) + screenshotWarning,
         screenshotWarning ? 'error' : 'ok',
       );
-      capturedScreenshotBlob = null;
-      updateScreenshotButton();
+      clearScreenshot();
       clearForm();
     }
   } catch (e) {
