@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Button, Checkbox, Code, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
-import { Plus } from 'lucide-react'
+import { Button, Checkbox, Code, Group, Loader, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
+import { ExternalLink, Plus } from 'lucide-react'
 import { useForm } from '@mantine/form'
-import { useCreateChannel, useCredentials, useRegions, useUpdateChannel, type ChannelFormValues } from '@/lib/queries'
-import type { Channel } from '@/lib/types'
+import {
+  useCreateChannel,
+  useCredentials,
+  useDiscordGuildChannels,
+  useDiscordGuilds,
+  useRegions,
+  useUpdateChannel,
+  type ChannelFormValues,
+} from '@/lib/queries'
+import type { Channel, DiscordGuildChannel } from '@/lib/types'
 import CredentialsModal from '@/components/CredentialsModal'
 import VariableTextInput from '@/components/VariableTextInput'
 import { CUSTOM_PREFIX_VARIABLES } from '@/lib/templateVariables'
@@ -19,6 +27,7 @@ const PLATFORM_OPTIONS = [
   { value: 'slack', label: 'Slack' },
   { value: 'slack_threaded', label: 'Slack (Threaded)' },
   { value: 'discord', label: 'Discord' },
+  { value: 'discord_bot', label: 'Discord (Bot)' },
   { value: 'telegram', label: 'Telegram' },
   { value: 'email', label: 'Email' },
   { value: 'webhook', label: 'Webhook (generic JSON)' },
@@ -52,6 +61,24 @@ const EMPTY_VALUES: ChannelFormValues = {
   sheet_name: '',
   google_credential_id: null,
   email_credential_id: null,
+  discord_guild_id: null,
+  discord_channel_id: null,
+}
+
+// Select data for a Discord server's channels: uncategorised ones first, then one group per
+// category, in Discord's own order (the API already sorts them that way).
+function discordChannelOptions(channels: DiscordGuildChannel[]) {
+  const option = (c: DiscordGuildChannel) => ({
+    value: c.id,
+    label: `#${c.name}${c.type === 15 ? ' (forum)' : ''}`,
+  })
+  const groups = new Map<string, ReturnType<typeof option>[]>()
+  const ungrouped: ReturnType<typeof option>[] = []
+  for (const c of channels) {
+    if (!c.parentName) ungrouped.push(option(c))
+    else groups.set(c.parentName, [...(groups.get(c.parentName) ?? []), option(c)])
+  }
+  return [...ungrouped, ...[...groups].map(([group, items]) => ({ group, items }))]
 }
 
 export default function ChannelFormModal({ opened, onClose, countryId, channel }: Readonly<Props>) {
@@ -93,6 +120,8 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
       google_credential_id: (v, values) =>
         values.platform === 'google_sheets' && !v ? 'A Google credential is required' : null,
       email_credential_id: (v, values) => (values.platform === 'email' && !v ? 'An email credential is required' : null),
+      discord_guild_id: (v, values) => (values.platform === 'discord_bot' && !v ? 'Pick a Discord server' : null),
+      discord_channel_id: (v, values) => (values.platform === 'discord_bot' && !v ? 'Pick a channel' : null),
     },
   })
 
@@ -115,12 +144,22 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
               sheet_name: channel.sheet_name ?? '',
               google_credential_id: channel.google_credential_id,
               email_credential_id: channel.email_credential_id,
+              discord_guild_id: channel.discord_guild_id,
+              discord_channel_id: channel.discord_channel_id,
             }
           : EMPTY_VALUES,
       )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, channel])
+
+  // Only fetched while the Discord (Bot) platform is selected.
+  const discordGuildsQuery = useDiscordGuilds(countryId, opened && form.values.platform === 'discord_bot')
+  const discordGuilds = discordGuildsQuery.data ?? []
+  const discordChannelsQuery = useDiscordGuildChannels(
+    countryId,
+    opened && form.values.platform === 'discord_bot' ? form.values.discord_guild_id : null,
+  )
 
   async function handleSubmit(values: ChannelFormValues) {
     const usesWebhookUrl =
@@ -151,6 +190,8 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
       sheet_name: values.platform === 'google_sheets' ? values.sheet_name?.trim() || null : null,
       google_credential_id: values.platform === 'google_sheets' ? values.google_credential_id : null,
       email_credential_id: values.platform === 'email' ? values.email_credential_id : null,
+      discord_guild_id: values.platform === 'discord_bot' ? values.discord_guild_id : null,
+      discord_channel_id: values.platform === 'discord_bot' ? values.discord_channel_id : null,
     }
     try {
       if (isEdit && channel) {
@@ -170,6 +211,7 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
   const isEmail = platform === 'email'
   const isWebhook = platform === 'webhook'
   const isDiscord = platform === 'discord'
+  const isDiscordBot = platform === 'discord_bot'
   const isGoogleChat = platform === 'google_chat'
   const isGoogleSheets = platform === 'google_sheets'
   const isNtfy = platform === 'ntfy'
@@ -261,6 +303,57 @@ export default function ChannelFormModal({ opened, onClose, countryId, channel }
                 disabled={saving}
                 {...form.getInputProps('discord_forum', { type: 'checkbox' })}
               />
+            )}
+            {isDiscordBot && (
+              <>
+                <Text size="xs" c="dimmed">
+                  Posts as the WME Requests bot — no webhook needed. Add the bot to your Discord server first (you
+                  need the Manage Server permission there), then come back to this tab and pick the channel.
+                </Text>
+                <div>
+                  <Select
+                    label="Discord Server"
+                    placeholder={discordGuilds.length ? 'Select a server…' : 'Add the bot to a server first'}
+                    data={discordGuilds.map((g) => ({ value: g.guild_id, label: g.guild_name }))}
+                    value={form.values.discord_guild_id}
+                    onChange={(v) => {
+                      form.setFieldValue('discord_guild_id', v)
+                      form.setFieldValue('discord_channel_id', null)
+                    }}
+                    error={form.errors.discord_guild_id}
+                    disabled={saving || !discordGuilds.length}
+                  />
+                  <Button
+                    component="a"
+                    href={`/api/discord/install?country_id=${countryId}`}
+                    target="_blank"
+                    rel="noopener"
+                    variant="subtle"
+                    size="xs"
+                    mt={4}
+                    px={0}
+                    leftSection={<ExternalLink size={14} />}
+                    disabled={saving}
+                  >
+                    Add bot to a Discord server
+                  </Button>
+                </div>
+                <Select
+                  label="Discord Channel"
+                  placeholder={form.values.discord_guild_id ? 'Select a channel…' : 'Select a server first'}
+                  description="Text, announcement or forum channels. In a forum, each notification is a new post."
+                  data={discordChannelOptions(discordChannelsQuery.data ?? [])}
+                  searchable
+                  value={form.values.discord_channel_id}
+                  onChange={(v) => form.setFieldValue('discord_channel_id', v)}
+                  error={
+                    form.errors.discord_channel_id ||
+                    (discordChannelsQuery.error ? discordChannelsQuery.error.message : undefined)
+                  }
+                  rightSection={discordChannelsQuery.isFetching ? <Loader size="xs" /> : undefined}
+                  disabled={saving || !form.values.discord_guild_id}
+                />
+              </>
             )}
             {isGoogleSheets && (
               <>

@@ -4,6 +4,7 @@ import { screenshotUrl } from './screenshots'
 import { resolveGoogleCredential, resolveEmailCredential } from './credentials'
 import { sendEmail as dispatchEmail } from './email/send-email'
 import { sendPush } from './push'
+import { discordApi } from './discord-bot'
 import { audiencePushSubscriptions, deleteSubscriptionById, type PushSubscriptionRow } from './subscriptions'
 
 // Same as LOCK_GATED_TYPES in ./requests — downlock/uplock and PUR requests carry a lock
@@ -19,6 +20,7 @@ export interface NotificationChannel {
     | 'slack'
     | 'slack_threaded'
     | 'discord'
+    | 'discord_bot'
     | 'telegram'
     | 'email'
     | 'webhook'
@@ -40,6 +42,8 @@ export interface NotificationChannel {
   last_thread_submitted_by: string | null
   last_thread_ts: string | null
   last_thread_day: string | null
+  discord_guild_id: string | null
+  discord_channel_id: string | null
 }
 
 export interface RequestRow {
@@ -183,6 +187,25 @@ async function sendSlackThreaded(
   )
 }
 
+// Shared by the webhook and bot Discord senders, so both post identical messages.
+function buildDiscordPayload(msg: ReturnType<typeof buildMessage>, prefix: string | null) {
+  const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
+  const lines = bodyLines(msg)
+  if (msg.submittedBy) lines.push(`Submitted by: [${msg.submittedBy}](${userProfileUrl(msg.submittedBy)})${rankSuffix}`)
+  return {
+    content: prefix || undefined,
+    embeds: [
+      {
+        title: msg.title,
+        description: lines.join('\n'),
+        color: msg.color,
+        timestamp: new Date().toISOString(),
+        ...(msg.screenshotUrl ? { image: { url: msg.screenshotUrl } } : {}),
+      },
+    ],
+  }
+}
+
 // Forum channels have no general message stream — every webhook post must create a new
 // post (thread) via `thread_name`, capped at Discord's 100-character thread name limit.
 async function sendDiscord(
@@ -191,26 +214,36 @@ async function sendDiscord(
   prefix: string | null,
   isForumThread: boolean,
 ) {
-  const rankSuffix = msg.editorRank != null ? ` (Rank ${msg.editorRank})` : ''
-  const lines = bodyLines(msg)
-  if (msg.submittedBy) lines.push(`Submitted by: [${msg.submittedBy}](${userProfileUrl(msg.submittedBy)})${rankSuffix}`)
   await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      content: prefix || undefined,
-      embeds: [
-        {
-          title: msg.title,
-          description: lines.join('\n'),
-          color: msg.color,
-          timestamp: new Date().toISOString(),
-          ...(msg.screenshotUrl ? { image: { url: msg.screenshotUrl } } : {}),
-        },
-      ],
+      ...buildDiscordPayload(msg, prefix),
       ...(isForumThread ? { thread_name: (prefix || msg.title).slice(0, 100) } : {}),
     }),
   })
+}
+
+// Posts as this app's own bot (src/lib/discord-bot.ts). Unlike the webhook sender, failures
+// throw with Discord's reason (e.g. the bot was removed from the server), which the Test button
+// shows. allowed_mentions is explicit so mentions in the prefix still ping; forum channels get
+// a new post per notification, same as the webhook sender.
+async function sendDiscordBot(
+  channelId: string,
+  msg: ReturnType<typeof buildMessage>,
+  prefix: string | null,
+  isForum: boolean,
+) {
+  const message = { ...buildDiscordPayload(msg, prefix), allowed_mentions: { parse: ['users', 'roles', 'everyone'] } }
+  const id = encodeURIComponent(channelId)
+  if (isForum) {
+    await discordApi(`/channels/${id}/threads`, {
+      method: 'POST',
+      body: JSON.stringify({ name: (prefix || msg.title).slice(0, 100), message }),
+    })
+  } else {
+    await discordApi(`/channels/${id}/messages`, { method: 'POST', body: JSON.stringify(message) })
+  }
 }
 
 // Google Chat's incoming webhook takes a plain { text } body — it supports a small markup
@@ -435,6 +468,10 @@ async function dispatchChannel(channel: NotificationChannel, msg: ReturnType<typ
     if (channel.platform === 'slack_threaded') await sendSlackThreaded(channel, msg, prefix)
     if (channel.platform === 'discord' && channel.webhook_url)
       await sendDiscord(channel.webhook_url, msg, prefix, !!channel.discord_forum)
+    if (channel.platform === 'discord_bot') {
+      if (!channel.discord_channel_id) throw new Error('No Discord channel configured for this channel')
+      await sendDiscordBot(channel.discord_channel_id, msg, prefix, !!channel.discord_forum)
+    }
     if (channel.platform === 'telegram' && channel.bot_token && channel.chat_id)
       await sendTelegram(channel.bot_token, channel.chat_id, msg, prefix)
     if (channel.platform === 'email' && channel.email_to)

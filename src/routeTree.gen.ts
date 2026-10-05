@@ -33,6 +33,8 @@ import { Route as ApiBlockedSubmittersIdRouteImport } from './routes/api/blocked
 import { Route as ApiChannelsIdRouteImport } from './routes/api/channels/$id'
 import { Route as ApiCountriesIdRouteImport } from './routes/api/countries/$id'
 import { Route as ApiCredentialsIdRouteImport } from './routes/api/credentials/$id'
+import { Route as ApiDiscordCallbackRouteImport } from './routes/api/discord/callback'
+import { Route as ApiDiscordInstallRouteImport } from './routes/api/discord/install'
 import { Route as ApiPushSubscribeRouteImport } from './routes/api/push/subscribe'
 import { Route as ApiPushSubscriptionsRouteImport } from './routes/api/push/subscriptions'
 import { Route as ApiPushVapidPublicKeyRouteImport } from './routes/api/push/vapid-public-key'
@@ -43,10 +45,13 @@ import { Route as ApiScreenshotsKeyRouteImport } from './routes/api/screenshots/
 import { Route as ApiUsersInviteRouteImport } from './routes/api/users/invite'
 import { Route as ApiChannelsIdTestRouteImport } from './routes/api/channels/$id/test'
 import { Route as ApiCountriesIdChannelsRouteImport } from './routes/api/countries/$id/channels'
+import { Route as ApiCountriesIdDiscordGuildsRouteImport } from './routes/api/countries/$id/discord-guilds'
 import { Route as ApiCountriesIdRegionsRouteImport } from './routes/api/countries/$id/regions'
 import { Route as ApiPushSubscriptionsIdRouteImport } from './routes/api/push/subscriptions/$id'
 import { Route as ApiUsersIdAccessRouteImport } from './routes/api/users/$id/access'
 import { Route as ApiUsersIdResetPasswordRouteImport } from './routes/api/users/$id/reset-password'
+import { Route as ApiCountriesIdDiscordGuildsGuildIdRouteImport } from './routes/api/countries/$id/discord-guilds/$guildId'
+import { Route as ApiCountriesIdDiscordGuildsGuildIdChannelsRouteImport } from './routes/api/countries/$id/discord-guilds/$guildId/channels'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -167,6 +172,16 @@ const ApiCredentialsIdRoute = ApiCredentialsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiCredentialsRoute,
 } as any)
+const ApiDiscordCallbackRoute = ApiDiscordCallbackRouteImport.update({
+  id: '/api/discord/callback',
+  path: '/api/discord/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDiscordInstallRoute = ApiDiscordInstallRouteImport.update({
+  id: '/api/discord/install',
+  path: '/api/discord/install',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPushSubscribeRoute = ApiPushSubscribeRouteImport.update({
   id: '/api/push/subscribe',
   path: '/api/push/subscribe',
@@ -217,6 +232,12 @@ const ApiCountriesIdChannelsRoute = ApiCountriesIdChannelsRouteImport.update({
   path: '/channels',
   getParentRoute: () => ApiCountriesIdRoute,
 } as any)
+const ApiCountriesIdDiscordGuildsRoute =
+  ApiCountriesIdDiscordGuildsRouteImport.update({
+    id: '/discord-guilds',
+    path: '/discord-guilds',
+    getParentRoute: () => ApiCountriesIdRoute,
+  } as any)
 const ApiCountriesIdRegionsRoute = ApiCountriesIdRegionsRouteImport.update({
   id: '/regions',
   path: '/regions',
@@ -237,6 +258,18 @@ const ApiUsersIdResetPasswordRoute = ApiUsersIdResetPasswordRouteImport.update({
   path: '/$id/reset-password',
   getParentRoute: () => ApiUsersRoute,
 } as any)
+const ApiCountriesIdDiscordGuildsGuildIdRoute =
+  ApiCountriesIdDiscordGuildsGuildIdRouteImport.update({
+    id: '/$guildId',
+    path: '/$guildId',
+    getParentRoute: () => ApiCountriesIdDiscordGuildsRoute,
+  } as any)
+const ApiCountriesIdDiscordGuildsGuildIdChannelsRoute =
+  ApiCountriesIdDiscordGuildsGuildIdChannelsRouteImport.update({
+    id: '/channels',
+    path: '/channels',
+    getParentRoute: () => ApiCountriesIdDiscordGuildsGuildIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -262,6 +295,8 @@ export interface FileRoutesByFullPath {
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
+  '/api/discord/callback': typeof ApiDiscordCallbackRoute
+  '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/push/subscribe': typeof ApiPushSubscribeRoute
   '/api/push/subscriptions': typeof ApiPushSubscriptionsRouteWithChildren
   '/api/push/vapid-public-key': typeof ApiPushVapidPublicKeyRoute
@@ -272,10 +307,13 @@ export interface FileRoutesByFullPath {
   '/api/users/invite': typeof ApiUsersInviteRoute
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
+  '/api/countries/$id/discord-guilds': typeof ApiCountriesIdDiscordGuildsRouteWithChildren
   '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
   '/api/push/subscriptions/$id': typeof ApiPushSubscriptionsIdRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
+  '/api/countries/$id/discord-guilds/$guildId': typeof ApiCountriesIdDiscordGuildsGuildIdRouteWithChildren
+  '/api/countries/$id/discord-guilds/$guildId/channels': typeof ApiCountriesIdDiscordGuildsGuildIdChannelsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -301,6 +339,8 @@ export interface FileRoutesByTo {
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
+  '/api/discord/callback': typeof ApiDiscordCallbackRoute
+  '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/push/subscribe': typeof ApiPushSubscribeRoute
   '/api/push/subscriptions': typeof ApiPushSubscriptionsRouteWithChildren
   '/api/push/vapid-public-key': typeof ApiPushVapidPublicKeyRoute
@@ -311,10 +351,13 @@ export interface FileRoutesByTo {
   '/api/users/invite': typeof ApiUsersInviteRoute
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
+  '/api/countries/$id/discord-guilds': typeof ApiCountriesIdDiscordGuildsRouteWithChildren
   '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
   '/api/push/subscriptions/$id': typeof ApiPushSubscriptionsIdRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
+  '/api/countries/$id/discord-guilds/$guildId': typeof ApiCountriesIdDiscordGuildsGuildIdRouteWithChildren
+  '/api/countries/$id/discord-guilds/$guildId/channels': typeof ApiCountriesIdDiscordGuildsGuildIdChannelsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -342,6 +385,8 @@ export interface FileRoutesById {
   '/api/channels/$id': typeof ApiChannelsIdRouteWithChildren
   '/api/countries/$id': typeof ApiCountriesIdRouteWithChildren
   '/api/credentials/$id': typeof ApiCredentialsIdRoute
+  '/api/discord/callback': typeof ApiDiscordCallbackRoute
+  '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/push/subscribe': typeof ApiPushSubscribeRoute
   '/api/push/subscriptions': typeof ApiPushSubscriptionsRouteWithChildren
   '/api/push/vapid-public-key': typeof ApiPushVapidPublicKeyRoute
@@ -352,10 +397,13 @@ export interface FileRoutesById {
   '/api/users/invite': typeof ApiUsersInviteRoute
   '/api/channels/$id/test': typeof ApiChannelsIdTestRoute
   '/api/countries/$id/channels': typeof ApiCountriesIdChannelsRoute
+  '/api/countries/$id/discord-guilds': typeof ApiCountriesIdDiscordGuildsRouteWithChildren
   '/api/countries/$id/regions': typeof ApiCountriesIdRegionsRoute
   '/api/push/subscriptions/$id': typeof ApiPushSubscriptionsIdRoute
   '/api/users/$id/access': typeof ApiUsersIdAccessRoute
   '/api/users/$id/reset-password': typeof ApiUsersIdResetPasswordRoute
+  '/api/countries/$id/discord-guilds/$guildId': typeof ApiCountriesIdDiscordGuildsGuildIdRouteWithChildren
+  '/api/countries/$id/discord-guilds/$guildId/channels': typeof ApiCountriesIdDiscordGuildsGuildIdChannelsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -383,6 +431,8 @@ export interface FileRouteTypes {
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
+    | '/api/discord/callback'
+    | '/api/discord/install'
     | '/api/push/subscribe'
     | '/api/push/subscriptions'
     | '/api/push/vapid-public-key'
@@ -393,10 +443,13 @@ export interface FileRouteTypes {
     | '/api/users/invite'
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
+    | '/api/countries/$id/discord-guilds'
     | '/api/countries/$id/regions'
     | '/api/push/subscriptions/$id'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
+    | '/api/countries/$id/discord-guilds/$guildId'
+    | '/api/countries/$id/discord-guilds/$guildId/channels'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -422,6 +475,8 @@ export interface FileRouteTypes {
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
+    | '/api/discord/callback'
+    | '/api/discord/install'
     | '/api/push/subscribe'
     | '/api/push/subscriptions'
     | '/api/push/vapid-public-key'
@@ -432,10 +487,13 @@ export interface FileRouteTypes {
     | '/api/users/invite'
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
+    | '/api/countries/$id/discord-guilds'
     | '/api/countries/$id/regions'
     | '/api/push/subscriptions/$id'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
+    | '/api/countries/$id/discord-guilds/$guildId'
+    | '/api/countries/$id/discord-guilds/$guildId/channels'
   id:
     | '__root__'
     | '/'
@@ -462,6 +520,8 @@ export interface FileRouteTypes {
     | '/api/channels/$id'
     | '/api/countries/$id'
     | '/api/credentials/$id'
+    | '/api/discord/callback'
+    | '/api/discord/install'
     | '/api/push/subscribe'
     | '/api/push/subscriptions'
     | '/api/push/vapid-public-key'
@@ -472,10 +532,13 @@ export interface FileRouteTypes {
     | '/api/users/invite'
     | '/api/channels/$id/test'
     | '/api/countries/$id/channels'
+    | '/api/countries/$id/discord-guilds'
     | '/api/countries/$id/regions'
     | '/api/push/subscriptions/$id'
     | '/api/users/$id/access'
     | '/api/users/$id/reset-password'
+    | '/api/countries/$id/discord-guilds/$guildId'
+    | '/api/countries/$id/discord-guilds/$guildId/channels'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -497,6 +560,8 @@ export interface RootRouteChildren {
   ApiScreenshotsRoute: typeof ApiScreenshotsRouteWithChildren
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
   ApiChannelsIdRoute: typeof ApiChannelsIdRouteWithChildren
+  ApiDiscordCallbackRoute: typeof ApiDiscordCallbackRoute
+  ApiDiscordInstallRoute: typeof ApiDiscordInstallRoute
   ApiPushSubscribeRoute: typeof ApiPushSubscribeRoute
   ApiPushSubscriptionsRoute: typeof ApiPushSubscriptionsRouteWithChildren
   ApiPushVapidPublicKeyRoute: typeof ApiPushVapidPublicKeyRoute
@@ -674,6 +739,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCredentialsIdRouteImport
       parentRoute: typeof ApiCredentialsRoute
     }
+    '/api/discord/callback': {
+      id: '/api/discord/callback'
+      path: '/api/discord/callback'
+      fullPath: '/api/discord/callback'
+      preLoaderRoute: typeof ApiDiscordCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/discord/install': {
+      id: '/api/discord/install'
+      path: '/api/discord/install'
+      fullPath: '/api/discord/install'
+      preLoaderRoute: typeof ApiDiscordInstallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/push/subscribe': {
       id: '/api/push/subscribe'
       path: '/api/push/subscribe'
@@ -744,6 +823,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCountriesIdChannelsRouteImport
       parentRoute: typeof ApiCountriesIdRoute
     }
+    '/api/countries/$id/discord-guilds': {
+      id: '/api/countries/$id/discord-guilds'
+      path: '/discord-guilds'
+      fullPath: '/api/countries/$id/discord-guilds'
+      preLoaderRoute: typeof ApiCountriesIdDiscordGuildsRouteImport
+      parentRoute: typeof ApiCountriesIdRoute
+    }
     '/api/countries/$id/regions': {
       id: '/api/countries/$id/regions'
       path: '/regions'
@@ -771,6 +857,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/users/$id/reset-password'
       preLoaderRoute: typeof ApiUsersIdResetPasswordRouteImport
       parentRoute: typeof ApiUsersRoute
+    }
+    '/api/countries/$id/discord-guilds/$guildId': {
+      id: '/api/countries/$id/discord-guilds/$guildId'
+      path: '/$guildId'
+      fullPath: '/api/countries/$id/discord-guilds/$guildId'
+      preLoaderRoute: typeof ApiCountriesIdDiscordGuildsGuildIdRouteImport
+      parentRoute: typeof ApiCountriesIdDiscordGuildsRoute
+    }
+    '/api/countries/$id/discord-guilds/$guildId/channels': {
+      id: '/api/countries/$id/discord-guilds/$guildId/channels'
+      path: '/channels'
+      fullPath: '/api/countries/$id/discord-guilds/$guildId/channels'
+      preLoaderRoute: typeof ApiCountriesIdDiscordGuildsGuildIdChannelsRouteImport
+      parentRoute: typeof ApiCountriesIdDiscordGuildsGuildIdRoute
     }
   }
 }
@@ -802,13 +902,46 @@ const ApiBlockedSubmittersRouteChildren: ApiBlockedSubmittersRouteChildren = {
 const ApiBlockedSubmittersRouteWithChildren =
   ApiBlockedSubmittersRoute._addFileChildren(ApiBlockedSubmittersRouteChildren)
 
+interface ApiCountriesIdDiscordGuildsGuildIdRouteChildren {
+  ApiCountriesIdDiscordGuildsGuildIdChannelsRoute: typeof ApiCountriesIdDiscordGuildsGuildIdChannelsRoute
+}
+
+const ApiCountriesIdDiscordGuildsGuildIdRouteChildren: ApiCountriesIdDiscordGuildsGuildIdRouteChildren =
+  {
+    ApiCountriesIdDiscordGuildsGuildIdChannelsRoute:
+      ApiCountriesIdDiscordGuildsGuildIdChannelsRoute,
+  }
+
+const ApiCountriesIdDiscordGuildsGuildIdRouteWithChildren =
+  ApiCountriesIdDiscordGuildsGuildIdRoute._addFileChildren(
+    ApiCountriesIdDiscordGuildsGuildIdRouteChildren,
+  )
+
+interface ApiCountriesIdDiscordGuildsRouteChildren {
+  ApiCountriesIdDiscordGuildsGuildIdRoute: typeof ApiCountriesIdDiscordGuildsGuildIdRouteWithChildren
+}
+
+const ApiCountriesIdDiscordGuildsRouteChildren: ApiCountriesIdDiscordGuildsRouteChildren =
+  {
+    ApiCountriesIdDiscordGuildsGuildIdRoute:
+      ApiCountriesIdDiscordGuildsGuildIdRouteWithChildren,
+  }
+
+const ApiCountriesIdDiscordGuildsRouteWithChildren =
+  ApiCountriesIdDiscordGuildsRoute._addFileChildren(
+    ApiCountriesIdDiscordGuildsRouteChildren,
+  )
+
 interface ApiCountriesIdRouteChildren {
   ApiCountriesIdChannelsRoute: typeof ApiCountriesIdChannelsRoute
+  ApiCountriesIdDiscordGuildsRoute: typeof ApiCountriesIdDiscordGuildsRouteWithChildren
   ApiCountriesIdRegionsRoute: typeof ApiCountriesIdRegionsRoute
 }
 
 const ApiCountriesIdRouteChildren: ApiCountriesIdRouteChildren = {
   ApiCountriesIdChannelsRoute: ApiCountriesIdChannelsRoute,
+  ApiCountriesIdDiscordGuildsRoute:
+    ApiCountriesIdDiscordGuildsRouteWithChildren,
   ApiCountriesIdRegionsRoute: ApiCountriesIdRegionsRoute,
 }
 
@@ -922,6 +1055,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiScreenshotsRoute: ApiScreenshotsRouteWithChildren,
   ApiUsersRoute: ApiUsersRouteWithChildren,
   ApiChannelsIdRoute: ApiChannelsIdRouteWithChildren,
+  ApiDiscordCallbackRoute: ApiDiscordCallbackRoute,
+  ApiDiscordInstallRoute: ApiDiscordInstallRoute,
   ApiPushSubscribeRoute: ApiPushSubscribeRoute,
   ApiPushSubscriptionsRoute: ApiPushSubscriptionsRouteWithChildren,
   ApiPushVapidPublicKeyRoute: ApiPushVapidPublicKeyRoute,
@@ -931,3 +1066,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

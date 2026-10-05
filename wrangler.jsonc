@@ -45,7 +45,11 @@
 		"WEB_PUSH_VAPID_PUBLIC_KEY": "BI7TZK5g2JTEXxFtmOy3KiCWs1rLvNAzsCNOWK_l3mb_jiyZrAKAyZOsYNuu0zIFJQxUXYoHIlTxz8R7v6ZrfR4",
 		// Contact address required by the Web Push protocol (VAPID "sub" claim) so push
 		// services can reach you about problems with your usage.
-		"WEB_PUSH_CONTACT": "mailto:wazerequest@michaelrosstarr.com "
+		"WEB_PUSH_CONTACT": "mailto:wazerequest@michaelrosstarr.com ",
+		// The Discord application (= OAuth2 client ID) of this app's own bot, used by the
+		// "Discord (Bot)" channel platform. Its DISCORD_BOT_TOKEN and DISCORD_CLIENT_SECRET are
+		// secrets — see DEPLOYMENT.md. Empty disables adding the bot to servers.
+		"DISCORD_APPLICATION_ID": ""
 	},
 	"d1_databases": [
 		{

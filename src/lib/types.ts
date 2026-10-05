@@ -4,6 +4,7 @@ export type Platform =
   | 'slack'
   | 'slack_threaded'
   | 'discord'
+  | 'discord_bot'
   | 'telegram'
   | 'email'
   | 'webhook'
@@ -51,6 +52,9 @@ export interface Channel {
   sheet_name: string | null
   google_credential_id: number | null
   email_credential_id: number | null
+  // discord_bot only — a server linked to the country (see DiscordGuild) and a channel in it.
+  discord_guild_id: string | null
+  discord_channel_id: string | null
 }
 
 export interface Credential {
@@ -149,4 +153,22 @@ export interface PushSubscription {
   country_code: string
   region_name: string | null
   region_code: string | null
+}
+
+// A Discord server a country has added this app's bot to (the "discord_bot" platform).
+export interface DiscordGuild {
+  id: number
+  country_id: number
+  guild_id: string
+  guild_name: string
+  added_by: string | null
+  created_at: string
+}
+
+// A postable channel in a linked Discord server. type: 0 text, 5 announcement, 15 forum.
+export interface DiscordGuildChannel {
+  id: string
+  name: string
+  type: number
+  parentName: string | null
 }

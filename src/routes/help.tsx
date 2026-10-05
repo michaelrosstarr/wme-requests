@@ -50,6 +50,25 @@ const SECTIONS: HelpSection[] = [
     ],
   },
   {
+    platform: 'discord_bot',
+    summary:
+      'Posts the same embed as the WME Requests bot, to a channel picked from a list — no webhook to create or paste.',
+    steps: [
+      <>
+        Add a channel, choose <strong>Discord (Bot)</strong>, and click <strong>Add bot to a Discord server</strong>.
+        You need the <strong>Manage Server</strong> permission in that server.
+      </>,
+      <>
+        In the tab that opens, pick the server and authorize the bot, then switch back. The server is now linked to
+        this country.
+      </>,
+      <>
+        Pick the server and channel. The bot needs to be able to see the channel — check its permissions if the channel
+        is private. Forum channels get a new post per notification.
+      </>,
+    ],
+  },
+  {
     platform: 'telegram',
     summary: 'Sends a message (or photo, if the request has a screenshot) via a Telegram bot.',
     steps: [

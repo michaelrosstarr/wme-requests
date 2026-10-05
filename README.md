@@ -26,7 +26,7 @@ A full-stack tool for Waze Map Editor (WME) that lets editors send **downlock** 
   - A *global* channel (fires on every request)
   - Per-event-type channels (fires only for downlocks *or* only for imagery)
   - Unlimited channels per event type
-- **Platforms**: Slack (Incoming Webhook), Discord (Webhook), Telegram (Bot API), Email (Postmark), generic Webhook (plain JSON POST for custom integrations)
+- **Platforms**: Slack (Incoming Webhook), Discord (Webhook), Discord (Bot — add the app's bot to a server in one click and pick a channel, no webhook; see [DEPLOYMENT.md § 8](DEPLOYMENT.md#8--configure-the-discord-bot-optional)), Telegram (Bot API), Email (Postmark), generic Webhook (plain JSON POST for custom integrations)
 - **Reports** — `/reports` breaks down requests by submitter, with a downlock/imagery split and each user's majority request type
 - **Dashboard** — filterable table of all requests per country, inline status updates, and an admin panel to manage countries and notification channels
 
@@ -182,9 +182,10 @@ All endpoints are under `/api/`. The dashboard and userscript both talk to this 
 }
 ```
 
-`platform` is one of `slack` | `discord` | `telegram` | `email` | `webhook`. `event_type` is one of `global` | `downlock` | `imagery`.
+`platform` is one of `slack` | `discord` | `discord_bot` | `telegram` | `email` | `webhook`. `event_type` is one of `global` | `downlock` | `imagery`.
 
 - **Slack / Discord / generic Webhook** — use `webhook_url`.
+- **Discord (Bot)** (`discord_bot`) — use `discord_guild_id` + `discord_channel_id` instead of `webhook_url`. The server must first be linked to the country by adding the bot from the channel form (`GET /api/discord/install?country_id=`); list linked servers with `GET /api/countries/:id/discord-guilds` and their channels with `GET /api/countries/:id/discord-guilds/:guildId/channels`; unlink one with `DELETE /api/countries/:id/discord-guilds/:guildId` (refused while a channel still uses it). Forum channels are detected automatically (each notification becomes a new post).
 - **Telegram** — use `bot_token` + `chat_id` instead of `webhook_url`.
 - **Email** — use `email_to` (recipient address) instead of `webhook_url`; sent through an email credential (Postmark, Mailgun or SMTP) added in the Credentials Manager.
 

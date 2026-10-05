@@ -1108,12 +1108,36 @@ async function editScreenshot(onError: (message: string) => void, cropFirst = fa
 
 // ── Screenshot editor ─────────────────────────────────────────────────────────
 // Full-screen overlay for cropping a capture to the map and drawing red circles and
-// arrows over it. The crop and shapes are kept as data (not pixels) so Undo/Clear/Full
-// image work and a later edit can restore them; Done renders them into a new JPEG
-// (renderScreenshot). Resolves null on Cancel/Esc.
+// arrows over it; with Circle or Arrow selected, dragging a placed shape moves it. The crop
+// and shapes are kept as data (not pixels) so Undo/Clear/Full image work and a later edit
+// can restore them; Done renders them into a new JPEG (renderScreenshot). Resolves null on
+// Cancel/Esc.
 const MARKUP_COLOR = '#e53935';
 // Drags shorter than this (in screen pixels) are treated as stray clicks.
 const MARKUP_MIN_DRAG_PX = 5;
+// How close (in screen pixels, beyond the stroke itself) a press must be to a shape's line
+// to grab it for moving.
+const MARKUP_GRAB_PX = 6;
+
+// Distance from (px,py) to the shape's drawn line — a circle's outline (not its inside, so
+// another shape can still be drawn within it) or an arrow's shaft. All in image pixels.
+function distanceToShape(shape: ScreenshotShape, px: number, py: number): number {
+  const { x1, y1, x2, y2 } = shape;
+  if (shape.kind === 'circle') {
+    const rx = Math.max(Math.abs(x2 - x1) / 2, 1);
+    const ry = Math.max(Math.abs(y2 - y1) / 2, 1);
+    const dx = px - (x1 + x2) / 2;
+    const dy = py - (y1 + y2) / 2;
+    const fromCenter = Math.hypot(dx, dy);
+    const normalized = Math.hypot(dx / rx, dy / ry);
+    if (normalized === 0) return Math.min(rx, ry);
+    // Gap between the point and where the ray from the centre through it meets the outline.
+    return Math.abs(fromCenter - fromCenter / normalized);
+  }
+  const lengthSq = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  const t = lengthSq ? Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / lengthSq)) : 0;
+  return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+}
 
 function drawMarkupShape(ctx: CanvasRenderingContext2D, shape: ScreenshotShape, lineWidth: number): void {
   const { x1, y1, x2, y2 } = shape;
@@ -1170,6 +1194,11 @@ async function openScreenshotEditor(original: Blob, current: ScreenshotEdit, cro
   let tool: ScreenshotShape['kind'] | 'crop' = cropFirst ? 'crop' : 'circle';
   // The shape or crop being dragged out.
   let draft: ScreenshotShape | { kind: 'crop'; x1: number; y1: number; x2: number; y2: number } | null = null;
+  // The placed shape being moved, and where the drag started (image pixels).
+  let moving: { shape: ScreenshotShape; startX: number; startY: number; from: ScreenshotShape; moved: boolean } | null = null;
+  // Copies of `shapes` from before each add, move or Clear; Undo restores the latest. Once
+  // it's empty, Undo removes the newest shape, for shapes kept from an earlier edit.
+  const undoStack: ScreenshotShape[][] = [];
   // Whether anything was changed — if not, Done keeps the current image rather than
   // re-encoding it for no gain.
   let changed = false;
@@ -1214,7 +1243,8 @@ async function openScreenshotEditor(original: Blob, current: ScreenshotEdit, cro
     if (draft && draft.kind !== 'crop') drawMarkupShape(ctx!, draft, lineWidth);
     const shownCrop = draft?.kind === 'crop' ? draftCrop(draft) : crop;
     if (shownCrop) drawCropOverlay(ctx!, shownCrop);
-    actionBtn('undo').disabled = actionBtn('clear').disabled = !shapes.length;
+    actionBtn('undo').disabled = !shapes.length && !undoStack.length;
+    actionBtn('clear').disabled = !shapes.length;
     actionBtn('full').disabled = !crop;
   }
 
@@ -1227,21 +1257,67 @@ async function openScreenshotEditor(original: Blob, current: ScreenshotEdit, cro
     };
   }
 
+  // The topmost shape whose line is under the point, if any. Only with Circle or Arrow
+  // selected — in Crop, a drag always crops.
+  function shapeAt(x: number, y: number): ScreenshotShape | null {
+    if (tool === 'crop') return null;
+    const displayScale = canvas.getBoundingClientRect().width / canvas.width;
+    const reach = markupLineWidth(crop ?? fullImage) / 2 + MARKUP_GRAB_PX / displayScale;
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      if (distanceToShape(shapes[i], x, y) <= reach) return shapes[i];
+    }
+    return null;
+  }
+
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     const { x, y } = toImagePoint(e);
+    const hit = shapeAt(x, y);
+    if (hit) {
+      moving = { shape: hit, startX: x, startY: y, from: { ...hit }, moved: false };
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
     draft = { kind: tool, x1: x, y1: y, x2: x, y2: y };
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!draft) return;
     const { x, y } = toImagePoint(e);
+    if (moving) {
+      const dx = x - moving.startX;
+      const dy = y - moving.startY;
+      const { shape, from } = moving;
+      shape.x1 = from.x1 + dx;
+      shape.y1 = from.y1 + dy;
+      shape.x2 = from.x2 + dx;
+      shape.y2 = from.y2 + dy;
+      moving.moved = true;
+      redraw();
+      return;
+    }
+    if (!draft) {
+      // Hovering: show that a placed shape can be picked up.
+      canvas.style.cursor = shapeAt(x, y) ? 'move' : '';
+      return;
+    }
     draft.x2 = x;
     draft.y2 = y;
     redraw();
   });
   canvas.addEventListener('pointerup', () => {
+    if (moving) {
+      if (moving.moved) {
+        // Snapshot from before the move: the moved shape's original position, others as they are.
+        const { shape, from } = moving;
+        undoStack.push(shapes.map((s) => (s === shape ? from : { ...s })));
+        changed = true;
+      }
+      moving = null;
+      canvas.style.cursor = '';
+      redraw();
+      return;
+    }
     if (!draft) return;
     const displayScale = canvas.getBoundingClientRect().width / canvas.width;
     if (draft.kind === 'crop') {
@@ -1252,13 +1328,20 @@ async function openScreenshotEditor(original: Blob, current: ScreenshotEdit, cro
         hintEl.style.display = 'none';
       }
     } else if (Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) * displayScale >= MARKUP_MIN_DRAG_PX) {
+      undoStack.push(shapes.map((s) => ({ ...s })));
       shapes.push(draft);
       changed = true;
     }
     draft = null;
     redraw();
   });
-  canvas.addEventListener('pointercancel', () => { draft = null; redraw(); });
+  canvas.addEventListener('pointercancel', () => {
+    if (moving) Object.assign(moving.shape, moving.from);
+    moving = null;
+    draft = null;
+    canvas.style.cursor = '';
+    redraw();
+  });
 
   overlay.querySelectorAll<HTMLButtonElement>('.wmereq-shot-tool').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1266,8 +1349,19 @@ async function openScreenshotEditor(original: Blob, current: ScreenshotEdit, cro
       overlay.querySelectorAll('.wmereq-shot-tool').forEach((b) => b.classList.toggle('active', b === btn));
     });
   });
-  actionBtn('undo').addEventListener('click', () => { shapes.pop(); changed = true; redraw(); });
-  actionBtn('clear').addEventListener('click', () => { shapes.length = 0; changed = true; redraw(); });
+  actionBtn('undo').addEventListener('click', () => {
+    const snapshot = undoStack.pop();
+    if (snapshot) shapes.splice(0, shapes.length, ...snapshot);
+    else shapes.pop();
+    changed = true;
+    redraw();
+  });
+  actionBtn('clear').addEventListener('click', () => {
+    undoStack.push(shapes.map((s) => ({ ...s })));
+    shapes.length = 0;
+    changed = true;
+    redraw();
+  });
   actionBtn('full').addEventListener('click', () => { crop = null; changed = true; redraw(); });
 
   document.body.appendChild(overlay);

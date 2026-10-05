@@ -3,6 +3,8 @@ import { json, err } from './http'
 import { sendTestMessage, type NotificationChannel } from './notifications'
 import { canAccessCountry, type UserAccess } from './access'
 import { credentialExists } from './credentials'
+import { isGuildLinked } from './discord-guilds'
+import { getChannel, FORUM_CHANNEL_TYPE, POSTABLE_CHANNEL_TYPES } from './discord-bot'
 
 export async function getChannels(access: UserAccess, countryId: number) {
   const country = await dbFirst('SELECT id FROM countries WHERE id = ?', [countryId])
@@ -36,6 +38,9 @@ interface ChannelBody {
   // channels, rather than a secret pasted directly into this channel.
   google_credential_id?: number | string | null
   email_credential_id?: number | string | null
+  // discord_bot only — see resolveDiscordBotChannel.
+  discord_guild_id?: string | null
+  discord_channel_id?: string | null
 }
 
 // Resolves+validates an optional region_id against the channel's country. Returns the
@@ -61,6 +66,30 @@ async function resolveCredentialId(
     return { error: `${kind === 'google' ? 'Google' : 'Email'} credential not found` }
   }
   return { id: Number(value) }
+}
+
+// For discord_bot: the server must be linked to this country (it came from Discord's own
+// install flow, see src/lib/discord-guilds.ts) and the channel must be one the bot can see in
+// that server — otherwise anyone could aim the shared bot at a channel in someone else's server.
+// Forum-ness comes from the channel itself rather than a checkbox.
+async function resolveDiscordBotChannel(
+  countryId: number,
+  guildId: string | null | undefined,
+  channelId: string | null | undefined,
+): Promise<{ guildId: string; channelId: string; forum: boolean } | { error: string }> {
+  if (!guildId || !channelId) return { error: 'A Discord server and channel are required for discord_bot' }
+  if (!(await isGuildLinked(countryId, guildId))) return { error: 'That Discord server is not linked to this country' }
+  let channel
+  try {
+    channel = await getChannel(channelId)
+  } catch (e) {
+    return { error: `Can't access that Discord channel — ${(e as Error).message}` }
+  }
+  if (channel.guild_id !== guildId) return { error: 'That Discord channel is not in the selected server' }
+  if (!POSTABLE_CHANNEL_TYPES.includes(channel.type)) {
+    return { error: 'Pick a text, announcement or forum channel' }
+  }
+  return { guildId, channelId, forum: channel.type === FORUM_CHANNEL_TYPE }
 }
 
 // Returns an error message if the platform-specific required fields are missing/invalid, else null.
@@ -132,10 +161,17 @@ export async function createChannel(access: UserAccess, countryId: number, body:
   if ('error' in resolvedEmailCred) return err(resolvedEmailCred.error)
   if (platform === 'email' && !resolvedEmailCred.id) return err('An email credential is required for email')
 
+  let discordBot: { guildId: string; channelId: string; forum: boolean } | null = null
+  if (platform === 'discord_bot') {
+    const resolved = await resolveDiscordBotChannel(countryId, body.discord_guild_id, body.discord_channel_id)
+    if ('error' in resolved) return err(resolved.error)
+    discordBot = resolved
+  }
+
   const result = await dbRun(
     `INSERT INTO notification_channels
-       (country_id, region_id, label, platform, event_type, webhook_url, bot_token, chat_id, custom_prefix, email_to, discord_forum, spreadsheet_id, sheet_name, google_credential_id, email_credential_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (country_id, region_id, label, platform, event_type, webhook_url, bot_token, chat_id, custom_prefix, email_to, discord_forum, spreadsheet_id, sheet_name, google_credential_id, email_credential_id, discord_guild_id, discord_channel_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       countryId,
       resolvedRegion.id,
@@ -147,11 +183,13 @@ export async function createChannel(access: UserAccess, countryId: number, body:
       chat_id || null,
       custom_prefix?.trim() || null,
       email_to?.trim() || null,
-      discord_forum ? 1 : 0,
+      (discordBot ? discordBot.forum : discord_forum) ? 1 : 0,
       spreadsheet_id?.trim() || null,
       sheet_name?.trim() || null,
       resolvedGoogleCred.id,
       resolvedEmailCred.id,
+      discordBot?.guildId ?? null,
+      discordBot?.channelId ?? null,
     ],
   )
   const row = await dbFirst<NotificationChannel>('SELECT * FROM notification_channels WHERE id = ?', [
@@ -182,7 +220,7 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
   const custom_prefix =
     body.custom_prefix !== undefined ? body.custom_prefix?.trim() || null : existing.custom_prefix
   const email_to = body.email_to !== undefined ? body.email_to?.trim() || null : existing.email_to
-  const discord_forum = body.discord_forum !== undefined ? (body.discord_forum ? 1 : 0) : existing.discord_forum
+  let discord_forum = body.discord_forum !== undefined ? (body.discord_forum ? 1 : 0) : existing.discord_forum
   const spreadsheet_id =
     body.spreadsheet_id !== undefined ? body.spreadsheet_id?.trim() || null : existing.spreadsheet_id
   const sheet_name = body.sheet_name !== undefined ? body.sheet_name?.trim() || null : existing.sheet_name
@@ -207,10 +245,31 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
     return err('An email credential is required for email')
   }
 
+  let discord_guild_id: string | null = null
+  let discord_channel_id: string | null = null
+  if (platform === 'discord_bot') {
+    discord_guild_id = body.discord_guild_id !== undefined ? body.discord_guild_id : existing.discord_guild_id
+    discord_channel_id = body.discord_channel_id !== undefined ? body.discord_channel_id : existing.discord_channel_id
+    // Re-checked only when the target changes, so editing e.g. the label doesn't fail just
+    // because Discord is unreachable or the bot has since lost access.
+    const targetChanged =
+      existing.platform !== 'discord_bot' ||
+      discord_guild_id !== existing.discord_guild_id ||
+      discord_channel_id !== existing.discord_channel_id
+    if (targetChanged) {
+      const resolved = await resolveDiscordBotChannel(existing.country_id, discord_guild_id, discord_channel_id)
+      if ('error' in resolved) return err(resolved.error)
+      discord_forum = resolved.forum ? 1 : 0
+    } else {
+      discord_forum = existing.discord_forum
+    }
+  }
+
   await dbRun(
     `UPDATE notification_channels
      SET label=?, platform=?, event_type=?, region_id=?, webhook_url=?, bot_token=?, chat_id=?, custom_prefix=?, email_to=?,
-         discord_forum=?, spreadsheet_id=?, sheet_name=?, google_credential_id=?, email_credential_id=?
+         discord_forum=?, spreadsheet_id=?, sheet_name=?, google_credential_id=?, email_credential_id=?,
+         discord_guild_id=?, discord_channel_id=?
      WHERE id=?`,
     [
       label,
@@ -227,6 +286,8 @@ export async function updateChannel(access: UserAccess, id: number, body: Channe
       sheet_name,
       google_credential_id,
       email_credential_id,
+      discord_guild_id,
+      discord_channel_id,
       id,
     ],
   )

@@ -85,6 +85,7 @@ This applies everything under [`migrations/`](migrations/):
 | `0024_security_events.sql` | `security_events` — per-user security log (sign-ins, failed sign-ins, sign-in method and 2FA changes) shown on the Account page |
 | `0025_central_auth.sql` | `user_access` (who may use this app, `is_global`, `feed_token`), copied from `user` — sign-in moved to the WMEKit account service, and Better Auth's tables (0002, 0022–0024) are no longer used |
 | `0026_superadmin.sql` | `user_access.is_superadmin` — the only level allowed to edit (name, code) or delete countries; set in the database only (see step 12) |
+| `0028_discord_bot_channel.sql` | `discord_bot` notification platform + `notification_channels.discord_guild_id`/`discord_channel_id`, and `discord_guilds` — the Discord servers each country has added the bot to (see step 8) |
 
 You'll re-run `db:migrate:remote` any time you pull a future update that adds a new migration file — `wrangler d1 migrations apply` only applies migrations that haven't run yet, so it's always safe to re-run.
 
@@ -133,10 +134,40 @@ Auth emails (invites, password resets, 2FA codes, security alerts) are sent by t
 service now, so this app has no `EMAIL` binding. Notification-channel emails still go through
 the BYOK credentials from step 9.
 
-## 8 — (removed) Discord sign-in
+## 8 — Configure the Discord bot (optional)
 
-"Sign in with Discord" is configured on the account service. (Discord *notification channels*
-are unaffected — they use webhooks.)
+The **Discord (Bot)** notification platform posts through this app's own Discord bot: a server
+admin adds the bot with one click and picks a channel from a dropdown, with no webhook to create.
+It's plain REST from the Worker with the bot token — no gateway connection, no privileged
+intents, nothing else to host. The webhook-based **Discord** platform keeps working without any
+of this. ("Sign in with Discord" is separate and lives on the account service.)
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), create an
+   application, then under **Bot** reset/copy its token. Leave **Public Bot** on (other server
+   admins need to be able to add it). No privileged gateway intents are needed.
+2. Under **OAuth2 → Redirects**, add `https://<your APP_URL>/api/discord/callback` — and, for
+   local dev, `http://localhost:3000/api/discord/callback` (or use a separate test application).
+3. Set the application's **Client ID** as `vars.DISCORD_APPLICATION_ID` in `wrangler.jsonc`, and
+   its bot token and **Client Secret** (OAuth2 page) as secrets:
+
+   ```bash
+   npx wrangler secret put DISCORD_BOT_TOKEN
+   npx wrangler secret put DISCORD_CLIENT_SECRET
+   ```
+
+   For local dev, put all three in `.dev.vars` (`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`,
+   `DISCORD_CLIENT_SECRET`) — `.dev.vars` overrides the `wrangler.jsonc` var.
+4. Run `npm run cf-typegen`.
+
+How servers get linked: **Add bot to a Discord server** in the channel form opens Discord's
+"Add to server" page (an OAuth2 code-grant install). Discord redirects back to
+`/api/discord/callback`, which checks the encrypted `state` (country, user, 10-minute expiry —
+encrypted with `CHANNEL_CREDENTIALS_KEY`, so set that from step 9 too) and records the server
+Discord reports in `discord_guilds` for that country. Channels can only be picked from servers
+linked to their own country, since one bot is shared by every country. The bot asks for View
+Channel, Send Messages, Embed Links, Send Messages in Threads (for forum posts) and Mention
+Everyone (so `@here`/role mentions in a channel's prefix ping); the admin adding it can untick
+any of these.
 
 ## 9 — Configure the Credentials Manager (optional)
 

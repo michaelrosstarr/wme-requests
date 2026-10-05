@@ -21,6 +21,7 @@ export const PLATFORMS = [
   'slack',
   'slack_threaded',
   'discord',
+  'discord_bot',
   'telegram',
   'email',
   'webhook',

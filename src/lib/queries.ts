@@ -8,6 +8,8 @@ import type {
   Country,
   Credential,
   CredentialType,
+  DiscordGuild,
+  DiscordGuildChannel,
   Me,
   PushSubscription,
   Region,
@@ -207,6 +209,9 @@ export interface ChannelFormValues {
   // References a row in `credentials` — see useCredentials below.
   google_credential_id: number | null
   email_credential_id: number | null
+  // discord_bot only — a server from useDiscordGuilds and a channel from useDiscordGuildChannels.
+  discord_guild_id: string | null
+  discord_channel_id: string | null
 }
 
 export function useCreateChannel() {
@@ -244,6 +249,26 @@ export function useDeleteChannel() {
 export function useTestChannel() {
   return useMutation({
     mutationFn: (id: number) => apiFetch(`/channels/${id}/test`, { method: 'POST' }),
+  })
+}
+
+// Discord servers this country has added the bot to. Refetched whenever the window regains focus,
+// so a server added in the "Add bot" tab shows up as soon as the user switches back.
+export function useDiscordGuilds(countryId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['discord-guilds', countryId],
+    queryFn: () => apiFetch<DiscordGuild[]>(`/countries/${countryId}/discord-guilds`),
+    enabled: !!countryId && enabled,
+    refetchOnWindowFocus: 'always',
+  })
+}
+
+export function useDiscordGuildChannels(countryId: string | null, guildId: string | null) {
+  return useQuery({
+    queryKey: ['discord-guild-channels', countryId, guildId],
+    queryFn: () => apiFetch<DiscordGuildChannel[]>(`/countries/${countryId}/discord-guilds/${guildId}/channels`),
+    enabled: !!countryId && !!guildId,
+    retry: false,
   })
 }
 

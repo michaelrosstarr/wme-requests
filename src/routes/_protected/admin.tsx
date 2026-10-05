@@ -26,6 +26,7 @@ import {
   useDeleteChannel,
   useDeleteCountry,
   useDeleteCredential,
+  useDiscordGuilds,
   useMe,
   useRegions,
   useRemoveUserAccess,
@@ -84,6 +85,13 @@ function Admin() {
   const channels = (channelsQuery.data ?? []).filter((ch) =>
     selectedRegionId ? String(ch.region_id) === selectedRegionId : true,
   )
+  // Server names for the Discord (Bot) channels' cards — only fetched if the country has any.
+  const discordGuildsQuery = useDiscordGuilds(
+    selectedCountryId,
+    (channelsQuery.data ?? []).some((ch) => ch.platform === 'discord_bot'),
+  )
+  const discordGuildName = (guildId: string | null) =>
+    discordGuildsQuery.data?.find((g) => g.guild_id === guildId)?.guild_name
   const deleteCountry = useDeleteCountry()
   const deleteChannel = useDeleteChannel()
   const testChannel = useTestChannel()
@@ -418,6 +426,11 @@ function Admin() {
                     <Group gap={4} mt={4}>
                       <PlatformBadge platform={ch.platform} />
                       <EventTypeBadge eventType={ch.event_type} />
+                      {ch.platform === 'discord_bot' && discordGuildName(ch.discord_guild_id) && (
+                        <Badge size="xs" color="indigo" variant="light">
+                          @ {discordGuildName(ch.discord_guild_id)}
+                        </Badge>
+                      )}
                       {ch.region_id ? (
                         <Badge size="xs" color="grape" variant="light" leftSection={<MapPin size={10} />}>
                           {ch.region_name ?? `#${ch.region_id}`}
