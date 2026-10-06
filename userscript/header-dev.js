@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME Requests (dev)
 // @namespace    https://github.com/michaelrosstarr/wme-requests
-// @version      2.8.2
+// @version      2026.10.06.1
 // @description  Local development build — loads the compiled TypeScript straight from .out/main.user.js.
 // @author       michaelrosstarr
 // @match        https://www.waze.com/editor*

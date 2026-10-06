@@ -93,4 +93,6 @@ For iterating without reinstalling the script on every change:
 
 ### Releasing
 
-Bump `@version` in both `header.js` and (for consistency) `userscript/README.md`'s changelog, then run `npm run build` and commit the result.
+The userscript uses a date-based version, `YYYY.MM.DD.N` (UTC), where `N` counts releases made on the same day — e.g. `2026.10.06.1`, then `2026.10.06.2` for a second release that day. Tampermonkey compares versions numerically segment by segment, so this sorts above the old semver releases (`2.x`) and existing installs still update via `@updateURL`.
+
+To release, run `npm run release` (or `npm run userscript:release` from the repo root) and commit the result. It runs `npm run bump` — which writes the next version into both `header.js` and `header-dev.js` — followed by `npm run build`. Plain `npm run build` never touches the version, so it's safe to run as often as you like during development.

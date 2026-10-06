@@ -9,6 +9,8 @@
     "watch": "rollup -c --watch",
     "concat": "node scripts/concat.mjs",
     "build": "npm run compile && npm run concat",
+    "bump": "node scripts/bump-version.mjs",
+    "release": "npm run bump && npm run build",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
